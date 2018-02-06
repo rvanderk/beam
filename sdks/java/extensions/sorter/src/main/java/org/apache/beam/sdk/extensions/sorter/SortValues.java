@@ -143,7 +143,7 @@ public class SortValues<PrimaryKeyT, SecondaryKeyT, ValueT>
 
     @ProcessElement
     public void processElement(ProcessContext c) {
-      Iterable<KV<SecondaryKeyT, ValueT>> records = c.element().getValue();
+      Iterable<KV<SecondaryKeyT, ValueT>> records = c.element().getValue().getValue();
 
       try {
         Sorter sorter = BufferedExternalSorter.create(sorterOptions);
@@ -151,7 +151,7 @@ public class SortValues<PrimaryKeyT, SecondaryKeyT, ValueT>
           sorter.add(
               KV.of(
                   CoderUtils.encodeToByteArray(keyCoder, record.getKey()),
-                  CoderUtils.encodeToByteArray(valueCoder, record.getValue())));
+                  CoderUtils.encodeToByteArray(valueCoder, record.getValue().getValue())));
         }
 
         c.output(
@@ -194,7 +194,7 @@ public class SortValues<PrimaryKeyT, SecondaryKeyT, ValueT>
         try {
           return KV.of(
               CoderUtils.decodeFromByteArray(keyCoder, next.getKey()),
-              CoderUtils.decodeFromByteArray(valueCoder, next.getValue()));
+              CoderUtils.decodeFromByteArray(valueCoder, next.getValue().getValue()));
         } catch (IOException e) {
           throw new RuntimeException(e);
         }

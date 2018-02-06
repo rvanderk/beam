@@ -24,6 +24,7 @@ import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.transforms.windowing.DefaultTrigger;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.beam.sdk.values.WindowingStrategy;
 import org.joda.time.Duration;
@@ -58,8 +59,7 @@ import org.slf4j.LoggerFactory;
  * PCollection<String> words = ...;
  * PCollection<String> uniqueWords =
  *     words.apply(Distinct.<String>create());
- * }
- * </pre>
+ * }</pre>
  *
  * @param <T> the type of the elements of the input and output {@code PCollection}s
  */
@@ -108,8 +108,11 @@ public class Distinct<T> extends PTransform<PCollection<T>, PCollection<T>> {
                 MapElements.via(
                     new SimpleFunction<T, KV<T, Void>>() {
                       @Override
-                      public KV<T, Void> apply(T element) {
-                        return KV.of(element, (Void) null);
+                      public TenantAwareValue<KV<T, Void>> apply(TenantAwareValue<T> element) {
+                        return TenantAwareValue.of(
+                            KV.<T, Void>of(
+                                element.getValue(),
+                                TenantAwareValue.<Void>of(element.getTenantId(), (Void) null)));
                       }
                     }))
             .apply(
@@ -118,8 +121,8 @@ public class Distinct<T> extends PTransform<PCollection<T>, PCollection<T>> {
                     new SerializableFunction<Iterable<Void>, Void>() {
                       @Override
                       @Nullable
-                      public Void apply(Iterable<Void> iter) {
-                        return null; // ignore input
+                      public TenantAwareValue<Void> apply(TenantAwareValue<Iterable<Void>> iter) {
+                        return TenantAwareValue.of(iter.getTenantId(), (Void) null); // ignore input
                       }
                     }));
     return combined.apply(
@@ -173,8 +176,9 @@ public class Distinct<T> extends PTransform<PCollection<T>, PCollection<T>> {
                   Combine.perKey(
                       new Combine.BinaryCombineFn<T>() {
                         @Override
-                        public T apply(T left, T right) {
-                          return left;
+                        public TenantAwareValue<T> apply(
+                            TenantAwareValue<T> left, TenantAwareValue<T> right) {
+                          return right;
                         }
                       }))
               // When there is no input, the combine outputs null. This can occur when the input

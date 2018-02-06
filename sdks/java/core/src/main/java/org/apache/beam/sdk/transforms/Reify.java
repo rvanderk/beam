@@ -26,6 +26,7 @@ import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.apache.beam.sdk.values.TimestampedValue.TimestampedValueCoder;
 import org.apache.beam.sdk.values.ValueInSingleWindow;
@@ -36,8 +37,7 @@ import org.joda.time.Duration;
  * values.
  */
 public class Reify {
-  private static class ReifyView<K, V>
-  extends PTransform<PCollection<K>, PCollection<KV<K, V>>> {
+  private static class ReifyView<K, V> extends PTransform<PCollection<K>, PCollection<KV<K, V>>> {
     private final PCollectionView<V> view;
     private final Coder<V> coder;
 
@@ -62,8 +62,7 @@ public class Reify {
     }
   }
 
-  private static class ReifyViewInGlobalWindow<V>
-  extends PTransform<PBegin, PCollection<V>> {
+  private static class ReifyViewInGlobalWindow<V> extends PTransform<PBegin, PCollection<V>> {
     private final PCollectionView<V> view;
     private final Coder<V> coder;
 
@@ -75,7 +74,9 @@ public class Reify {
     @Override
     public PCollection<V> expand(PBegin input) {
       return input
-          .apply(Create.of((Void) null).withCoder(VoidCoder.of()))
+          .apply(
+              Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Void) null))
+                  .withCoder(VoidCoder.of()))
           .apply(Reify.viewAsValues(view, coder))
           .apply(Values.create());
     }
@@ -93,7 +94,8 @@ public class Reify {
                     @ProcessElement
                     public void processElement(ProcessContext c, BoundedWindow window) {
                       c.outputWithTimestamp(
-                          ValueInSingleWindow.of(c.element(), c.timestamp(), window, c.pane()),
+                          ValueInSingleWindow.of(
+                              c.tenantAwareElement(), c.timestamp(), window, c.pane()),
                           c.timestamp());
                     }
                   }))
@@ -135,7 +137,10 @@ public class Reify {
                           KV.of(
                               c.element().getKey(),
                               ValueInSingleWindow.of(
-                                  c.element().getValue(), c.timestamp(), window, c.pane())));
+                                  c.element().getTenantAwareValue(),
+                                  c.timestamp(),
+                                  window,
+                                  c.pane())));
                     }
                   }))
           .setCoder(

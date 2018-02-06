@@ -27,25 +27,37 @@ import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.testing.ValidatesRunner;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for {@link ToString} transform.
- */
+/** Tests for {@link ToString} transform. */
 @RunWith(JUnit4.class)
 public class ToStringTest {
-  @Rule
-  public final TestPipeline p = TestPipeline.create();
+  @Rule public final TestPipeline p = TestPipeline.create();
 
   @Test
   @Category(ValidatesRunner.class)
   public void testToStringOf() {
-    Integer[] ints = {1, 2, 3, 4, 5};
-    String[] strings = {"1", "2", "3", "4", "5"};
+    TenantAwareValue<Integer>[] ints =
+        new TenantAwareValue[] {
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5)
+        };
+    TenantAwareValue<String>[] strings =
+        new TenantAwareValue[] {
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "1"),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "2"),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "3"),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "4"),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "5")
+        };
     PCollection<Integer> input = p.apply(Create.of(Arrays.asList(ints)));
     PCollection<String> output = input.apply(ToString.elements());
     PAssert.that(output).containsInAnyOrder(strings);
@@ -55,13 +67,13 @@ public class ToStringTest {
   @Test
   @Category(ValidatesRunner.class)
   public void testToStringKV() {
-    ArrayList<KV<String, Integer>> kvs = new ArrayList<>();
-    kvs.add(KV.of("one", 1));
-    kvs.add(KV.of("two", 2));
+    ArrayList<TenantAwareValue<KV<String, Integer>>> kvs = new ArrayList<>();
+    kvs.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("one", 1)));
+    kvs.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("two", 2)));
 
-    ArrayList<String> expected = new ArrayList<>();
-    expected.add("one,1");
-    expected.add("two,2");
+    ArrayList<TenantAwareValue<String>> expected = new ArrayList<>();
+    expected.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "one,1"));
+    expected.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "two,2"));
 
     PCollection<KV<String, Integer>> input = p.apply(Create.of(kvs));
     PCollection<String> output = input.apply(ToString.kvs());
@@ -72,13 +84,13 @@ public class ToStringTest {
   @Test
   @Category(ValidatesRunner.class)
   public void testToStringKVWithDelimiter() {
-    ArrayList<KV<String, Integer>> kvs = new ArrayList<>();
-    kvs.add(KV.of("one", 1));
-    kvs.add(KV.of("two", 2));
+    ArrayList<TenantAwareValue<KV<String, Integer>>> kvs = new ArrayList<>();
+    kvs.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("one", 1)));
+    kvs.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("two", 2)));
 
-    ArrayList<String> expected = new ArrayList<>();
-    expected.add("one\t1");
-    expected.add("two\t2");
+    ArrayList<TenantAwareValue<String>> expected = new ArrayList<>();
+    expected.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "one\t1"));
+    expected.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "two\t2"));
 
     PCollection<KV<String, Integer>> input = p.apply(Create.of(kvs));
     PCollection<String> output = input.apply(ToString.kvs("\t"));
@@ -89,16 +101,20 @@ public class ToStringTest {
   @Test
   @Category(ValidatesRunner.class)
   public void testToStringIterable() {
-    ArrayList<Iterable<String>> iterables = new ArrayList<>();
-    iterables.add(Arrays.asList(new String[]{"one", "two", "three"}));
-    iterables.add(Arrays.asList(new String[]{"four", "five", "six"}));
+    ArrayList<TenantAwareValue<Iterable<String>>> iterables = new ArrayList<>();
+    iterables.add(
+        TenantAwareValue.of(
+            TenantAwareValue.NULL_TENANT, Arrays.asList(new String[] {"one", "two", "three"})));
+    iterables.add(
+        TenantAwareValue.of(
+            TenantAwareValue.NULL_TENANT, Arrays.asList(new String[] {"four", "five", "six"})));
 
-    ArrayList<String> expected = new ArrayList<>();
-    expected.add("one,two,three");
-    expected.add("four,five,six");
+    ArrayList<TenantAwareValue<String>> expected = new ArrayList<>();
+    expected.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "one,two,three"));
+    expected.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "four,five,six"));
 
-    PCollection<Iterable<String>> input = p.apply(Create.of(iterables)
-            .withCoder(IterableCoder.of(StringUtf8Coder.of())));
+    PCollection<Iterable<String>> input =
+        p.apply(Create.of(iterables).withCoder(IterableCoder.of(StringUtf8Coder.of())));
     PCollection<String> output = input.apply(ToString.iterables());
     PAssert.that(output).containsInAnyOrder(expected);
     p.run();
@@ -107,16 +123,20 @@ public class ToStringTest {
   @Test
   @Category(ValidatesRunner.class)
   public void testToStringIterableWithDelimiter() {
-    ArrayList<Iterable<String>> iterables = new ArrayList<>();
-    iterables.add(Arrays.asList(new String[]{"one", "two", "three"}));
-    iterables.add(Arrays.asList(new String[]{"four", "five", "six"}));
+    ArrayList<TenantAwareValue<Iterable<String>>> iterables = new ArrayList<>();
+    iterables.add(
+        TenantAwareValue.of(
+            TenantAwareValue.NULL_TENANT, Arrays.asList(new String[] {"one", "two", "three"})));
+    iterables.add(
+        TenantAwareValue.of(
+            TenantAwareValue.NULL_TENANT, Arrays.asList(new String[] {"four", "five", "six"})));
 
-    ArrayList<String> expected = new ArrayList<>();
-    expected.add("one\ttwo\tthree");
-    expected.add("four\tfive\tsix");
+    ArrayList<TenantAwareValue<String>> expected = new ArrayList<>();
+    expected.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "one\ttwo\tthree"));
+    expected.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "four\tfive\tsix"));
 
-    PCollection<Iterable<String>> input = p.apply(Create.of(iterables)
-            .withCoder(IterableCoder.of(StringUtf8Coder.of())));
+    PCollection<Iterable<String>> input =
+        p.apply(Create.of(iterables).withCoder(IterableCoder.of(StringUtf8Coder.of())));
     PCollection<String> output = input.apply(ToString.iterables("\t"));
     PAssert.that(output).containsInAnyOrder(expected);
     p.run();

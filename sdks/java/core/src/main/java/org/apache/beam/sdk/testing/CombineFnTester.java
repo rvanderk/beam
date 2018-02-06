@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.apache.beam.sdk.transforms.Combine.CombineFn;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.hamcrest.Matcher;
 
 /**
@@ -37,14 +38,18 @@ public class CombineFnTester {
    * output. Tests a variety of permutations of the input.
    */
   public static <InputT, AccumT, OutputT> void testCombineFn(
-      CombineFn<InputT, AccumT, OutputT> fn, List<InputT> input, final OutputT expected) {
+      CombineFn<InputT, AccumT, OutputT> fn,
+      List<TenantAwareValue<InputT>> input,
+      final TenantAwareValue<OutputT> expected) {
     testCombineFn(fn, input, is(expected));
     Collections.shuffle(input);
     testCombineFn(fn, input, is(expected));
   }
 
   public static <InputT, AccumT, OutputT> void testCombineFn(
-      CombineFn<InputT, AccumT, OutputT> fn, List<InputT> input, Matcher<? super OutputT> matcher) {
+      CombineFn<InputT, AccumT, OutputT> fn,
+      List<TenantAwareValue<InputT>> input,
+      Matcher<TenantAwareValue<OutputT>> matcher) {
     int size = input.size();
     checkCombineFnShardsMultipleOrders(fn, Collections.singletonList(input), matcher);
     checkCombineFnShardsMultipleOrders(fn, shardEvenly(input, 2), matcher);
@@ -60,8 +65,8 @@ public class CombineFnTester {
 
   private static <InputT, AccumT, OutputT> void checkCombineFnShardsMultipleOrders(
       CombineFn<InputT, AccumT, OutputT> fn,
-      List<? extends Iterable<InputT>> shards,
-      Matcher<? super OutputT> matcher) {
+      List<? extends Iterable<TenantAwareValue<InputT>>> shards,
+      Matcher<TenantAwareValue<OutputT>> matcher) {
     checkCombineFnShardsSingleMerge(fn, shards, matcher);
     checkCombineFnShardsWithEmptyAccumulators(fn, shards, matcher);
     checkCombineFnShardsIncrementalMerging(fn, shards, matcher);
@@ -73,30 +78,30 @@ public class CombineFnTester {
 
   private static <InputT, AccumT, OutputT> void checkCombineFnShardsSingleMerge(
       CombineFn<InputT, AccumT, OutputT> fn,
-      Iterable<? extends Iterable<InputT>> shards,
-      Matcher<? super OutputT> matcher) {
-    List<AccumT> accumulators = combineInputs(fn, shards);
-    AccumT merged = fn.mergeAccumulators(accumulators);
+      Iterable<? extends Iterable<TenantAwareValue<InputT>>> shards,
+      Matcher<TenantAwareValue<OutputT>> matcher) {
+    List<TenantAwareValue<AccumT>> accumulators = combineInputs(fn, shards);
+    TenantAwareValue<AccumT> merged = fn.mergeAccumulators(accumulators);
     assertThat(fn.extractOutput(merged), matcher);
   }
 
   private static <InputT, AccumT, OutputT> void checkCombineFnShardsWithEmptyAccumulators(
       CombineFn<InputT, AccumT, OutputT> fn,
-      Iterable<? extends Iterable<InputT>> shards,
-      Matcher<? super OutputT> matcher) {
-    List<AccumT> accumulators = combineInputs(fn, shards);
+      Iterable<? extends Iterable<TenantAwareValue<InputT>>> shards,
+      Matcher<TenantAwareValue<OutputT>> matcher) {
+    List<TenantAwareValue<AccumT>> accumulators = combineInputs(fn, shards);
     accumulators.add(0, fn.createAccumulator());
     accumulators.add(fn.createAccumulator());
-    AccumT merged = fn.mergeAccumulators(accumulators);
+    TenantAwareValue<AccumT> merged = fn.mergeAccumulators(accumulators);
     assertThat(fn.extractOutput(merged), matcher);
   }
 
   private static <InputT, AccumT, OutputT> void checkCombineFnShardsIncrementalMerging(
       CombineFn<InputT, AccumT, OutputT> fn,
-      List<? extends Iterable<InputT>> shards,
-      Matcher<? super OutputT> matcher) {
-    AccumT accumulator = shards.isEmpty() ? fn.createAccumulator() : null;
-    for (AccumT inputAccum : combineInputs(fn, shards)) {
+      List<? extends Iterable<TenantAwareValue<InputT>>> shards,
+      Matcher<TenantAwareValue<OutputT>> matcher) {
+    TenantAwareValue<AccumT> accumulator = shards.isEmpty() ? fn.createAccumulator() : null;
+    for (TenantAwareValue<AccumT> inputAccum : combineInputs(fn, shards)) {
       if (accumulator == null) {
         accumulator = inputAccum;
       } else {
@@ -106,13 +111,14 @@ public class CombineFnTester {
     assertThat(fn.extractOutput(accumulator), matcher);
   }
 
-  private static <InputT, AccumT, OutputT> List<AccumT> combineInputs(
-      CombineFn<InputT, AccumT, OutputT> fn, Iterable<? extends Iterable<InputT>> shards) {
-    List<AccumT> accumulators = new ArrayList<>();
+  private static <InputT, AccumT, OutputT> List<TenantAwareValue<AccumT>> combineInputs(
+      CombineFn<InputT, AccumT, OutputT> fn,
+      Iterable<? extends Iterable<TenantAwareValue<InputT>>> shards) {
+    List<TenantAwareValue<AccumT>> accumulators = new ArrayList<>();
     int maybeCompact = 0;
-    for (Iterable<InputT> shard : shards) {
-      AccumT accumulator = fn.createAccumulator();
-      for (InputT elem : shard) {
+    for (Iterable<TenantAwareValue<InputT>> shard : shards) {
+      TenantAwareValue<AccumT> accumulator = fn.createAccumulator();
+      for (TenantAwareValue<InputT> elem : shard) {
         accumulator = fn.addInput(accumulator, elem);
       }
       if (maybeCompact++ % 2 == 0) {
@@ -126,14 +132,12 @@ public class CombineFnTester {
   private static <T> List<List<T>> shardEvenly(List<T> input, int numShards) {
     List<List<T>> shards = new ArrayList<>(numShards);
     for (int i = 0; i < numShards; i++) {
-      shards.add(input.subList(i * input.size() / numShards,
-          (i + 1) * input.size() / numShards));
+      shards.add(input.subList(i * input.size() / numShards, (i + 1) * input.size() / numShards));
     }
     return shards;
   }
 
-  private static <T> List<List<T>> shardExponentially(
-      List<T> input, double base) {
+  private static <T> List<List<T>> shardExponentially(List<T> input, double base) {
     assert base > 1.0;
     List<List<T>> shards = new ArrayList<>();
     int end = input.size();

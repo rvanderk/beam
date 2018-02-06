@@ -53,6 +53,7 @@ import org.apache.beam.sdk.util.CoderUtils;
 import org.apache.beam.sdk.util.common.ElementByteSizeObserver;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
@@ -63,17 +64,13 @@ import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Test case for {@link PAssert}.
- */
+/** Test case for {@link PAssert}. */
 @RunWith(JUnit4.class)
 public class PAssertTest implements Serializable {
 
-  @Rule
-  public final transient TestPipeline pipeline = TestPipeline.create();
+  @Rule public final transient TestPipeline pipeline = TestPipeline.create();
 
-  @Rule
-  public transient ExpectedException thrown = ExpectedException.none();
+  @Rule public transient ExpectedException thrown = ExpectedException.none();
 
   private static class NotSerializableObject {
 
@@ -89,7 +86,8 @@ public class PAssertTest implements Serializable {
   }
 
   private static class NotSerializableObjectCoder extends AtomicCoder<NotSerializableObject> {
-    private NotSerializableObjectCoder() { }
+    private NotSerializableObjectCoder() {}
+
     private static final NotSerializableObjectCoder INSTANCE = new NotSerializableObjectCoder();
 
     @JsonCreator
@@ -99,12 +97,10 @@ public class PAssertTest implements Serializable {
 
     @Override
     public void encode(NotSerializableObject value, OutputStream outStream)
-        throws CoderException, IOException {
-    }
+        throws CoderException, IOException {}
 
     @Override
-    public NotSerializableObject decode(InputStream inStream)
-        throws CoderException, IOException {
+    public NotSerializableObject decode(InputStream inStream) throws CoderException, IOException {
       return new NotSerializableObject();
     }
 
@@ -115,8 +111,7 @@ public class PAssertTest implements Serializable {
 
     @Override
     public void registerByteSizeObserver(
-        NotSerializableObject value, ElementByteSizeObserver observer)
-        throws Exception {
+        NotSerializableObject value, ElementByteSizeObserver observer) throws Exception {
       observer.update(0L);
     }
   }
@@ -159,47 +154,48 @@ public class PAssertTest implements Serializable {
     byte[] encoded = CoderUtils.encodeToByteArray(coder, success);
     SuccessOrFailure res = CoderUtils.decodeFromByteArray(coder, encoded);
 
-    assertEquals("Encode-decode successful SuccessOrFailure",
-        success.isSuccess(), res.isSuccess());
-    assertEquals("Encode-decode successful SuccessOrFailure",
+    assertEquals("Encode-decode successful SuccessOrFailure", success.isSuccess(), res.isSuccess());
+    assertEquals(
+        "Encode-decode successful SuccessOrFailure",
         success.assertionError(),
         res.assertionError());
   }
 
   /**
-   * A {@link PAssert} about the contents of a {@link PCollection}
-   * must not require the contents of the {@link PCollection} to be
-   * serializable.
+   * A {@link PAssert} about the contents of a {@link PCollection} must not require the contents of
+   * the {@link PCollection} to be serializable.
    */
   @Test
   @Category(ValidatesRunner.class)
   public void testContainsInAnyOrderNotSerializable() throws Exception {
-    PCollection<NotSerializableObject> pcollection = pipeline
-        .apply(Create.of(
-          new NotSerializableObject(),
-          new NotSerializableObject())
-            .withCoder(NotSerializableObjectCoder.of()));
+    PCollection<NotSerializableObject> pcollection =
+        pipeline.apply(
+            Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new NotSerializableObject()),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new NotSerializableObject()))
+                .withCoder(NotSerializableObjectCoder.of()));
 
-    PAssert.that(pcollection).containsInAnyOrder(
-      new NotSerializableObject(),
-      new NotSerializableObject());
+    PAssert.that(pcollection)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new NotSerializableObject()),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new NotSerializableObject()));
 
     pipeline.run();
   }
 
   /**
-   * A {@link PAssert} about the contents of a {@link PCollection}
-   * is allows to be verified by an arbitrary {@link SerializableFunction},
-   * though.
+   * A {@link PAssert} about the contents of a {@link PCollection} is allows to be verified by an
+   * arbitrary {@link SerializableFunction}, though.
    */
   @Test
   @Category(ValidatesRunner.class)
   public void testSerializablePredicate() throws Exception {
-    PCollection<NotSerializableObject> pcollection = pipeline
-        .apply(Create.of(
-          new NotSerializableObject(),
-          new NotSerializableObject())
-            .withCoder(NotSerializableObjectCoder.of()));
+    PCollection<NotSerializableObject> pcollection =
+        pipeline.apply(
+            Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new NotSerializableObject()),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new NotSerializableObject()))
+                .withCoder(NotSerializableObjectCoder.of()));
 
     PAssert.that(pcollection)
         .satisfies(
@@ -211,9 +207,8 @@ public class PAssertTest implements Serializable {
   }
 
   /**
-   * A {@link PAssert} about the contents of a {@link PCollection}
-   * is allows to be verified by an arbitrary {@link SerializableFunction},
-   * though.
+   * A {@link PAssert} about the contents of a {@link PCollection} is allows to be verified by an
+   * arbitrary {@link SerializableFunction}, though.
    */
   @Test
   @Category(ValidatesRunner.class)
@@ -222,8 +217,12 @@ public class PAssertTest implements Serializable {
         pipeline
             .apply(
                 Create.timestamped(
-                        TimestampedValue.of(new NotSerializableObject(), new Instant(250L)),
-                        TimestampedValue.of(new NotSerializableObject(), new Instant(500L)))
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(new NotSerializableObject(), new Instant(250L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(new NotSerializableObject(), new Instant(500L))))
                     .withCoder(NotSerializableObjectCoder.of()))
             .apply(Window.into(FixedWindows.of(Duration.millis(300L))));
 
@@ -231,14 +230,14 @@ public class PAssertTest implements Serializable {
         .inWindow(new IntervalWindow(new Instant(0L), new Instant(300L)))
         .satisfies(
             contents -> {
-              assertThat(Iterables.isEmpty(contents), is(false));
+              assertThat(Iterables.isEmpty(contents.getValue()), is(false));
               return null; // no problem!
             });
     PAssert.that(pcollection)
         .inWindow(new IntervalWindow(new Instant(300L), new Instant(600L)))
         .satisfies(
             contents -> {
-              assertThat(Iterables.isEmpty(contents), is(false));
+              assertThat(Iterables.isEmpty(contents.getValue()), is(false));
               return null; // no problem!
             });
 
@@ -246,8 +245,8 @@ public class PAssertTest implements Serializable {
   }
 
   /**
-   * Test that we throw an error at pipeline construction time when the user mistakenly uses
-   * {@code PAssert.thatSingleton().equals()} instead of the test method {@code .isEqualTo}.
+   * Test that we throw an error at pipeline construction time when the user mistakenly uses {@code
+   * PAssert.thatSingleton().equals()} instead of the test method {@code .isEqualTo}.
    */
   @SuppressWarnings("deprecation") // test of deprecated function
   @Test
@@ -255,13 +254,15 @@ public class PAssertTest implements Serializable {
     thrown.expect(UnsupportedOperationException.class);
     thrown.expectMessage("isEqualTo");
 
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(42));
-    PAssert.thatSingleton(pcollection).equals(42);
+    PCollection<Integer> pcollection =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42)));
+    PAssert.thatSingleton(pcollection)
+        .equals(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42));
   }
 
   /**
-   * Test that we throw an error at pipeline construction time when the user mistakenly uses
-   * {@code PAssert.that().equals()} instead of the test method {@code .containsInAnyOrder}.
+   * Test that we throw an error at pipeline construction time when the user mistakenly uses {@code
+   * PAssert.that().equals()} instead of the test method {@code .containsInAnyOrder}.
    */
   @SuppressWarnings("deprecation") // test of deprecated function
   @Test
@@ -269,13 +270,14 @@ public class PAssertTest implements Serializable {
     thrown.expect(UnsupportedOperationException.class);
     thrown.expectMessage("containsInAnyOrder");
 
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(42));
-    PAssert.that(pcollection).equals(42);
+    PCollection<Integer> pcollection =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42)));
+    PAssert.that(pcollection).equals(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42));
   }
 
   /**
-   * Test that {@code PAssert.thatSingleton().hashCode()} is unsupported.
-   * See {@link #testPAssertEqualsSingletonUnsupported}.
+   * Test that {@code PAssert.thatSingleton().hashCode()} is unsupported. See {@link
+   * #testPAssertEqualsSingletonUnsupported}.
    */
   @SuppressWarnings("deprecation") // test of deprecated function
   @Test
@@ -283,13 +285,14 @@ public class PAssertTest implements Serializable {
     thrown.expect(UnsupportedOperationException.class);
     thrown.expectMessage(".hashCode() is not supported.");
 
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(42));
+    PCollection<Integer> pcollection =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42)));
     PAssert.thatSingleton(pcollection).hashCode();
   }
 
   /**
-   * Test that {@code PAssert.thatIterable().hashCode()} is unsupported.
-   * See {@link #testPAssertEqualsIterableUnsupported}.
+   * Test that {@code PAssert.thatIterable().hashCode()} is unsupported. See {@link
+   * #testPAssertEqualsIterableUnsupported}.
    */
   @SuppressWarnings("deprecation") // test of deprecated function
   @Test
@@ -297,24 +300,23 @@ public class PAssertTest implements Serializable {
     thrown.expect(UnsupportedOperationException.class);
     thrown.expectMessage(".hashCode() is not supported.");
 
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(42));
+    PCollection<Integer> pcollection =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42)));
     PAssert.that(pcollection).hashCode();
   }
 
-  /**
-   * Basic test for {@code isEqualTo}.
-   */
+  /** Basic test for {@code isEqualTo}. */
   @Test
   @Category(ValidatesRunner.class)
   public void testIsEqualTo() throws Exception {
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(43));
-    PAssert.thatSingleton(pcollection).isEqualTo(43);
+    PCollection<Integer> pcollection =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 43)));
+    PAssert.thatSingleton(pcollection)
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 43));
     pipeline.run();
   }
 
-  /**
-   * Basic test for {@code isEqualTo}.
-   */
+  /** Basic test for {@code isEqualTo}. */
   @Test
   @Category(ValidatesRunner.class)
   public void testWindowedIsEqualTo() throws Exception {
@@ -322,37 +324,39 @@ public class PAssertTest implements Serializable {
         pipeline
             .apply(
                 Create.timestamped(
-                    TimestampedValue.of(43, new Instant(250L)),
-                    TimestampedValue.of(22, new Instant(-250L))))
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of(43, new Instant(250L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of(22, new Instant(-250L)))))
             .apply(Window.into(FixedWindows.of(Duration.millis(500L))));
     PAssert.thatSingleton(pcollection)
         .inOnlyPane(new IntervalWindow(new Instant(0L), new Instant(500L)))
-        .isEqualTo(43);
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 43));
     PAssert.thatSingleton(pcollection)
         .inOnlyPane(new IntervalWindow(new Instant(-500L), new Instant(0L)))
-        .isEqualTo(22);
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 22));
     pipeline.run();
   }
 
-  /**
-   * Basic test for {@code notEqualTo}.
-   */
+  /** Basic test for {@code notEqualTo}. */
   @Test
   @Category(ValidatesRunner.class)
   public void testNotEqualTo() throws Exception {
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(43));
-    PAssert.thatSingleton(pcollection).notEqualTo(42);
+    PCollection<Integer> pcollection =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 43)));
+    PAssert.thatSingleton(pcollection)
+        .notEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42));
     pipeline.run();
   }
 
-  /**
-   * Test that we throw an error for false assertion on singleton.
-   */
+  /** Test that we throw an error for false assertion on singleton. */
   @Test
   @Category(ValidatesRunner.class)
   public void testPAssertEqualsSingletonFalse() throws Exception {
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(42));
-    PAssert.thatSingleton("The value was not equal to 44", pcollection).isEqualTo(44);
+    PCollection<Integer> pcollection =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42)));
+    PAssert.thatSingleton("The value was not equal to 44", pcollection)
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 44));
 
     Throwable thrown = runExpectingAssertionFailure(pipeline);
 
@@ -363,14 +367,14 @@ public class PAssertTest implements Serializable {
     assertThat(message, containsString("but: was <42>"));
   }
 
-  /**
-   * Test that we throw an error for false assertion on singleton.
-   */
+  /** Test that we throw an error for false assertion on singleton. */
   @Test
   @Category(ValidatesRunner.class)
   public void testPAssertEqualsSingletonFalseDefaultReasonString() throws Exception {
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(42));
-    PAssert.thatSingleton(pcollection).isEqualTo(44);
+    PCollection<Integer> pcollection =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42)));
+    PAssert.thatSingleton(pcollection)
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 44));
 
     Throwable thrown = runExpectingAssertionFailure(pipeline);
 
@@ -381,31 +385,48 @@ public class PAssertTest implements Serializable {
     assertThat(message, containsString("but: was <42>"));
   }
 
-  /**
-   * Tests that {@code containsInAnyOrder} is actually order-independent.
-   */
+  /** Tests that {@code containsInAnyOrder} is actually order-independent. */
   @Test
   @Category(ValidatesRunner.class)
   public void testContainsInAnyOrder() throws Exception {
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(1, 2, 3, 4));
-    PAssert.that(pcollection).containsInAnyOrder(2, 1, 4, 3);
+    PCollection<Integer> pcollection =
+        pipeline.apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4)));
+    PAssert.that(pcollection)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3));
     pipeline.run();
   }
 
-  /**
-   * Tests that {@code containsInAnyOrder} is actually order-independent.
-   */
+  /** Tests that {@code containsInAnyOrder} is actually order-independent. */
   @Test
   @Category(ValidatesRunner.class)
   public void testGlobalWindowContainsInAnyOrder() throws Exception {
-    PCollection<Integer> pcollection = pipeline.apply(Create.of(1, 2, 3, 4));
-    PAssert.that(pcollection).inWindow(GlobalWindow.INSTANCE).containsInAnyOrder(2, 1, 4, 3);
+    PCollection<Integer> pcollection =
+        pipeline.apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4)));
+    PAssert.that(pcollection)
+        .inWindow(GlobalWindow.INSTANCE)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3));
     pipeline.run();
   }
 
-  /**
-   * Tests that windowed {@code containsInAnyOrder} is actually order-independent.
-   */
+  /** Tests that windowed {@code containsInAnyOrder} is actually order-independent. */
   @Test
   @Category(ValidatesRunner.class)
   public void testWindowedContainsInAnyOrder() throws Exception {
@@ -413,10 +434,14 @@ public class PAssertTest implements Serializable {
         pipeline
             .apply(
                 Create.timestamped(
-                    TimestampedValue.of(1, new Instant(100L)),
-                    TimestampedValue.of(2, new Instant(200L)),
-                    TimestampedValue.of(3, new Instant(300L)),
-                    TimestampedValue.of(4, new Instant(400L))))
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of(1, new Instant(100L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of(2, new Instant(200L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of(3, new Instant(300L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of(4, new Instant(400L)))))
             .apply(
                 Window.into(
                     SlidingWindows.of(Duration.millis(200L))
@@ -424,47 +449,63 @@ public class PAssertTest implements Serializable {
                         .withOffset(Duration.millis(50L))));
 
     PAssert.that(pcollection)
-        .inWindow(new IntervalWindow(new Instant(-50L), new Instant(150L))).containsInAnyOrder(1);
+        .inWindow(new IntervalWindow(new Instant(-50L), new Instant(150L)))
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1));
     PAssert.that(pcollection)
         .inWindow(new IntervalWindow(new Instant(50L), new Instant(250L)))
-        .containsInAnyOrder(2, 1);
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1));
     PAssert.that(pcollection)
         .inWindow(new IntervalWindow(new Instant(150L), new Instant(350L)))
-        .containsInAnyOrder(2, 3);
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3));
     PAssert.that(pcollection)
         .inWindow(new IntervalWindow(new Instant(250L), new Instant(450L)))
-        .containsInAnyOrder(4, 3);
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3));
     PAssert.that(pcollection)
         .inWindow(new IntervalWindow(new Instant(350L), new Instant(550L)))
-        .containsInAnyOrder(4);
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4));
     pipeline.run();
   }
 
   @Test
   @Category(ValidatesRunner.class)
   public void testEmpty() {
-    PCollection<Long> vals =
-        pipeline.apply(Create.empty(VarLongCoder.of()));
+    PCollection<Long> vals = pipeline.apply(Create.empty(VarLongCoder.of()));
 
     PAssert.that(vals).empty();
 
     pipeline.run();
   }
 
-  /**
-   * Tests that {@code containsInAnyOrder} fails when and how it should.
-   */
+  /** Tests that {@code containsInAnyOrder} fails when and how it should. */
   @Test
   @Category(ValidatesRunner.class)
   public void testContainsInAnyOrderFalse() throws Exception {
-    PCollection<Integer> pcollection = pipeline
-        .apply(Create.of(1, 2, 3, 4));
+    PCollection<Integer> pcollection =
+        pipeline.apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4)));
 
-    PAssert.that(pcollection).containsInAnyOrder(2, 1, 4, 3, 7);
+    PAssert.that(pcollection)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 7));
 
     Throwable exc = runExpectingAssertionFailure(pipeline);
-    Pattern expectedPattern = Pattern.compile(
-        "Expected: iterable over \\[((<4>|<7>|<3>|<2>|<1>)(, )?){5}\\] in any order");
+    Pattern expectedPattern =
+        Pattern.compile(
+            "Expected: iterable over \\[((<4>|<7>|<3>|<2>|<1>)(, )?){5}\\] in any order");
     // A loose pattern, but should get the job done.
     assertTrue(
         "Expected error message from PAssert with substring matching "
@@ -499,18 +540,20 @@ public class PAssertTest implements Serializable {
 
     String message = thrown.getMessage();
 
-    assertThat(message,
-        containsString("GenerateSequence/Read(BoundedCountingSource).out"));
+    assertThat(message, containsString("GenerateSequence/Read(BoundedCountingSource).out"));
     assertThat(message, containsString("Expected: iterable over [] in any order"));
   }
 
   @Test
   public void testAssertionSiteIsCaptured() {
     // This check should return a failure.
-    SuccessOrFailure res = PAssert.doChecks(
-        PAssert.PAssertionSite.capture("Captured assertion message."),
-            10,
-        new MatcherCheckerFn(SerializableMatchers.contains(11)));
+    SuccessOrFailure res =
+        PAssert.doChecks(
+            PAssert.PAssertionSite.capture("Captured assertion message."),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 10),
+            new MatcherCheckerFn(
+                SerializableMatchers.contains(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11))));
 
     String stacktrace = Throwables.getStackTraceAsString(res.assertionError());
     assertEquals(res.isSuccess(), false);
@@ -525,12 +568,8 @@ public class PAssertTest implements Serializable {
 
     Throwable thrown = runExpectingAssertionFailure(pipeline);
 
-    assertThat(
-        thrown.getMessage(),
-        containsString("Should be empty"));
-    assertThat(
-        thrown.getMessage(),
-        containsString("Expected: iterable over [] in any order"));
+    assertThat(thrown.getMessage(), containsString("Should be empty"));
+    assertThat(thrown.getMessage(), containsString("Expected: iterable over [] in any order"));
     String stacktrace = Throwables.getStackTraceAsString(thrown);
     assertThat(stacktrace, containsString("testAssertionSiteIsCapturedWithMessage"));
     assertThat(stacktrace, containsString("assertThatCollectionIsEmptyWithMessage"));
@@ -544,9 +583,7 @@ public class PAssertTest implements Serializable {
 
     Throwable thrown = runExpectingAssertionFailure(pipeline);
 
-    assertThat(
-        thrown.getMessage(),
-        containsString("Expected: iterable over [] in any order"));
+    assertThat(thrown.getMessage(), containsString("Expected: iterable over [] in any order"));
     String stacktrace = Throwables.getStackTraceAsString(thrown);
     assertThat(stacktrace, containsString("testAssertionSiteIsCapturedWithoutMessage"));
     assertThat(stacktrace, containsString("assertThatCollectionIsEmptyWithoutMessage"));
@@ -574,26 +611,56 @@ public class PAssertTest implements Serializable {
 
   @Test
   public void countAssertsSucceeds() {
-    PCollection<Integer> create = pipeline.apply("FirstCreate", Create.of(1, 2, 3));
+    PCollection<Integer> create =
+        pipeline.apply(
+            "FirstCreate",
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3)));
 
-    PAssert.that(create).containsInAnyOrder(1, 2, 3);
-    PAssert.thatSingleton(create.apply(Sum.integersGlobally())).isEqualTo(6);
-    PAssert.thatMap(pipeline.apply("CreateMap", Create.of(KV.of(1, 2))))
-        .isEqualTo(Collections.singletonMap(1, 2));
+    PAssert.that(create)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3));
+    PAssert.thatSingleton(create.apply(Sum.integersGlobally()))
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6));
+    PAssert.thatMap(
+            pipeline.apply(
+                "CreateMap",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(1, 2)))))
+        .isEqualTo(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, Collections.singletonMap(1, 2)));
 
     assertThat(PAssert.countAsserts(pipeline), equalTo(3));
   }
 
   @Test
   public void countAssertsMultipleCallsIndependent() {
-    PCollection<Integer> create = pipeline.apply("FirstCreate", Create.of(1, 2, 3));
+    PCollection<Integer> create =
+        pipeline.apply(
+            "FirstCreate",
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3)));
 
-    PAssert.that(create).containsInAnyOrder(1, 2, 3);
-    PAssert.thatSingleton(create.apply(Sum.integersGlobally())).isEqualTo(6);
+    PAssert.that(create)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3));
+    PAssert.thatSingleton(create.apply(Sum.integersGlobally()))
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6));
     assertThat(PAssert.countAsserts(pipeline), equalTo(2));
 
-    PAssert.thatMap(pipeline.apply("CreateMap", Create.of(KV.of(1, 2))))
-        .isEqualTo(Collections.singletonMap(1, 2));
+    PAssert.thatMap(
+            pipeline.apply(
+                "CreateMap",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(1, 2)))))
+        .isEqualTo(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, Collections.singletonMap(1, 2)));
 
     assertThat(PAssert.countAsserts(pipeline), equalTo(3));
   }

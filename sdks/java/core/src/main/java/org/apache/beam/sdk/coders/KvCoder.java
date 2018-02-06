@@ -34,8 +34,7 @@ import org.apache.beam.sdk.values.TypeParameter;
  * @param <V> the type of the values of the KVs being transcoded
  */
 public class KvCoder<K, V> extends StructuredCoder<KV<K, V>> {
-  public static <K, V> KvCoder<K, V> of(Coder<K> keyCoder,
-                                        Coder<V> valueCoder) {
+  public static <K, V> KvCoder<K, V> of(Coder<K> keyCoder, Coder<V> valueCoder) {
     return new KvCoder<>(keyCoder, valueCoder);
   }
 
@@ -58,17 +57,17 @@ public class KvCoder<K, V> extends StructuredCoder<KV<K, V>> {
   }
 
   @Override
-  public void encode(KV<K, V> kv, OutputStream outStream)
-      throws IOException, CoderException {
+  public void encode(KV<K, V> kv, OutputStream outStream) throws IOException, CoderException {
     encode(kv, outStream, Context.NESTED);
   }
 
   @Override
   public void encode(KV<K, V> kv, OutputStream outStream, Context context)
-      throws IOException, CoderException  {
+      throws IOException, CoderException {
     if (kv == null) {
       throw new CoderException("cannot encode a null KV");
     }
+    StringUtf8Coder.of().encode(kv.getTenantId(), outStream);
     keyCoder.encode(kv.getKey(), outStream);
     valueCoder.encode(kv.getValue(), outStream, context);
   }
@@ -79,11 +78,11 @@ public class KvCoder<K, V> extends StructuredCoder<KV<K, V>> {
   }
 
   @Override
-  public KV<K, V> decode(InputStream inStream, Context context)
-      throws IOException, CoderException {
+  public KV<K, V> decode(InputStream inStream, Context context) throws IOException, CoderException {
+    String tenantId = StringUtf8Coder.of().decode(inStream);
     K key = keyCoder.decode(inStream);
     V value = valueCoder.decode(inStream, context);
-    return KV.of(key, value);
+    return KV.of(key, value).withTenant(tenantId);
   }
 
   @Override
@@ -107,27 +106,22 @@ public class KvCoder<K, V> extends StructuredCoder<KV<K, V>> {
     if (consistentWithEquals()) {
       return kv;
     } else {
-      return KV.of(getKeyCoder().structuralValue(kv.getKey()),
-                   getValueCoder().structuralValue(kv.getValue()));
+      return KV.of(
+          getKeyCoder().structuralValue(kv.getKey()),
+          getValueCoder().structuralValue(kv.getValue()));
     }
   }
 
-  /**
-   * Returns whether both keyCoder and valueCoder are considered not expensive.
-   */
+  /** Returns whether both keyCoder and valueCoder are considered not expensive. */
   @Override
   public boolean isRegisterByteSizeObserverCheap(KV<K, V> kv) {
     return keyCoder.isRegisterByteSizeObserverCheap(kv.getKey())
         && valueCoder.isRegisterByteSizeObserverCheap(kv.getValue());
   }
 
-  /**
-   * Notifies ElementByteSizeObserver about the byte size of the
-   * encoded value using this coder.
-   */
+  /** Notifies ElementByteSizeObserver about the byte size of the encoded value using this coder. */
   @Override
-  public void registerByteSizeObserver(
-      KV<K, V> kv, ElementByteSizeObserver observer)
+  public void registerByteSizeObserver(KV<K, V> kv, ElementByteSizeObserver observer)
       throws Exception {
     if (kv == null) {
       throw new CoderException("cannot encode a null KV");

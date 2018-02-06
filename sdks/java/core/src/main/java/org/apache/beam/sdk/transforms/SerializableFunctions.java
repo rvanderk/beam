@@ -21,30 +21,32 @@ package org.apache.beam.sdk.transforms;
 import java.io.Serializable;
 import javax.annotation.Nullable;
 import org.apache.beam.sdk.util.SerializableUtils;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /** Useful {@link SerializableFunction} overrides. */
 public class SerializableFunctions {
   public static <InT, OutT extends Serializable> SerializableFunction<InT, OutT> clonesOf(
-      final OutT base) {
-    return input -> SerializableUtils.clone(base);
+      final TenantAwareValue<OutT> base) {
+    return input ->
+        TenantAwareValue.of(base.getTenantId(), SerializableUtils.clone(base.getValue()));
   }
 
   private static class Identity<T> implements SerializableFunction<T, T> {
     @Override
-    public T apply(T input) {
+    public TenantAwareValue<T> apply(TenantAwareValue<T> input) {
       return input;
     }
   }
 
   private static class Constant<InT, OutT> implements SerializableFunction<InT, OutT> {
-    @Nullable OutT value;
+    @Nullable TenantAwareValue<OutT> value;
 
-    Constant(@Nullable OutT value) {
+    Constant(@Nullable TenantAwareValue<OutT> value) {
       this.value = value;
     }
 
     @Override
-    public OutT apply(InT input) {
+    public TenantAwareValue<OutT> apply(TenantAwareValue<InT> input) {
       return value;
     }
   }
@@ -53,7 +55,8 @@ public class SerializableFunctions {
     return new Identity<>();
   }
 
-  public static <InT, OutT> SerializableFunction<InT, OutT> constant(@Nullable OutT value) {
+  public static <InT, OutT> SerializableFunction<InT, OutT> constant(
+      @Nullable TenantAwareValue<OutT> value) {
     return new Constant<>(value);
   }
 }

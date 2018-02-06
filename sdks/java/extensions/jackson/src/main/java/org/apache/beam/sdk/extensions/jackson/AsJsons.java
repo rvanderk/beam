@@ -24,11 +24,12 @@ import org.apache.beam.sdk.transforms.MapElements;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /**
- * {@link PTransform} for serializing objects to JSON {@link String Strings}.
- * Transforms a {@code PCollection<InputT>} into a {@link PCollection} of JSON
- * {@link String Strings} representing objects in the original {@link PCollection} using Jackson.
+ * {@link PTransform} for serializing objects to JSON {@link String Strings}. Transforms a {@code
+ * PCollection<InputT>} into a {@link PCollection} of JSON {@link String Strings} representing
+ * objects in the original {@link PCollection} using Jackson.
  */
 public class AsJsons<InputT> extends PTransform<PCollection<InputT>, PCollection<String>> {
   private static final ObjectMapper DEFAULT_MAPPER = new ObjectMapper();
@@ -49,9 +50,7 @@ public class AsJsons<InputT> extends PTransform<PCollection<InputT>, PCollection
     this.inputClass = outputClass;
   }
 
-  /**
-   * Use custom Jackson {@link ObjectMapper} instead of the default one.
-   */
+  /** Use custom Jackson {@link ObjectMapper} instead of the default one. */
   public AsJsons<InputT> withMapper(ObjectMapper mapper) {
     AsJsons<InputT> newTransform = new AsJsons<>(inputClass);
     newTransform.customMapper = mapper;
@@ -60,17 +59,19 @@ public class AsJsons<InputT> extends PTransform<PCollection<InputT>, PCollection
 
   @Override
   public PCollection<String> expand(PCollection<InputT> input) {
-    return input.apply(MapElements.via(new SimpleFunction<InputT, String>() {
-      @Override
-      public String apply(InputT input) {
-        try {
-          ObjectMapper mapper = Optional.fromNullable(customMapper).or(DEFAULT_MAPPER);
-          return mapper.writeValueAsString(input);
-        } catch (IOException e) {
-          throw new RuntimeException(
-              "Failed to serialize " + inputClass.getName() + " value: " + input, e);
-        }
-      }
-    }));
+    return input.apply(
+        MapElements.via(
+            new SimpleFunction<InputT, String>() {
+              @Override
+              public TenantAwareValue<String> apply(TenantAwareValue<InputT> input) {
+                try {
+                  ObjectMapper mapper = Optional.fromNullable(customMapper).or(DEFAULT_MAPPER);
+                  return TenantAwareValue.of(input.getTenantId(), mapper.writeValueAsString(input));
+                } catch (IOException e) {
+                  throw new RuntimeException(
+                      "Failed to serialize " + inputClass.getName() + " value: " + input, e);
+                }
+              }
+            }));
   }
 }

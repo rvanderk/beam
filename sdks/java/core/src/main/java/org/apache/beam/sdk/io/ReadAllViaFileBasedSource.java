@@ -31,6 +31,7 @@ import org.apache.beam.sdk.transforms.Reshuffle;
 import org.apache.beam.sdk.transforms.SerializableFunction;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /**
  * Reads each file in the input {@link PCollection} of {@link ReadableFile} using given parameters
@@ -99,7 +100,11 @@ public class ReadAllViaFileBasedSource<T>
       ReadableFile file = c.element().getKey();
       OffsetRange range = c.element().getValue();
       FileBasedSource<T> source =
-          CompressedSource.from(createSource.apply(file.getMetadata().resourceId().toString()))
+          CompressedSource.from(
+                  createSource
+                      .apply(
+                          TenantAwareValue.of("SYS0", file.getMetadata().resourceId().toString()))
+                      .getValue())
               .withCompression(file.getCompression());
       try (BoundedSource.BoundedReader<T> reader =
           source

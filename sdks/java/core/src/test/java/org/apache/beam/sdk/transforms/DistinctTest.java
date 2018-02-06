@@ -41,6 +41,7 @@ import org.apache.beam.sdk.transforms.windowing.Repeatedly;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.joda.time.Duration;
@@ -60,20 +61,33 @@ public class DistinctTest {
   @Test
   @Category(ValidatesRunner.class)
   public void testDistinct() {
-    List<String> strings = Arrays.asList("k1", "k5", "k5", "k2", "k1", "k2", "k3");
+    List<TenantAwareValue<String>> strings =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k5"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k5"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k2"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k2"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k3"));
 
     PCollection<String> input = p.apply(Create.of(strings).withCoder(StringUtf8Coder.of()));
 
     PCollection<String> output = input.apply(Distinct.create());
 
-    PAssert.that(output).containsInAnyOrder("k1", "k5", "k2", "k3");
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k5"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k2"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k3"));
     p.run();
   }
 
   @Test
   @Category(ValidatesRunner.class)
   public void testDistinctEmpty() {
-    List<String> strings = Arrays.asList();
+    List<TenantAwareValue<String>> strings = Arrays.asList();
 
     PCollection<String> input = p.apply(Create.of(strings).withCoder(StringUtf8Coder.of()));
 
@@ -85,16 +99,16 @@ public class DistinctTest {
 
   private static class Keys<T> implements SerializableFunction<KV<T, String>, T> {
     @Override
-    public T apply(KV<T, String> input) {
-      return input.getKey();
+    public TenantAwareValue<T> apply(TenantAwareValue<KV<T, String>> input) {
+      return TenantAwareValue.of(input.getTenantId(), input.getValue().getKey());
     }
   }
 
   private static class Checker implements SerializableFunction<Iterable<KV<String, String>>, Void> {
     @Override
-    public Void apply(Iterable<KV<String, String>> input) {
+    public TenantAwareValue<Void> apply(TenantAwareValue<Iterable<KV<String, String>>> input) {
       Map<String, String> values = new HashMap<>();
-      for (KV<String, String> kv : input) {
+      for (KV<String, String> kv : input.getValue()) {
         values.put(kv.getKey(), kv.getValue());
       }
       assertEquals(2, values.size());
@@ -107,8 +121,11 @@ public class DistinctTest {
   @Test
   @Category(ValidatesRunner.class)
   public void testDistinctWithRepresentativeValue() {
-    List<KV<String, String>> strings =
-        Arrays.asList(KV.of("k1", "v1"), KV.of("k1", "v2"), KV.of("k2", "v1"));
+    List<TenantAwareValue<KV<String, String>>> strings =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("k1", "v1")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("k1", "v2")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("k2", "v1")));
 
     PCollection<KV<String, String>> input = p.apply(Create.of(strings));
 
@@ -150,17 +167,26 @@ public class DistinctTest {
             .apply(Distinct.create());
     PAssert.that(distinctValues)
         .inWindow(new IntervalWindow(base, base.plus(Duration.standardSeconds(30))))
-        .containsInAnyOrder("k1", "k2", "k3");
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k2"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k3"));
     PAssert.that(distinctValues)
         .inWindow(
             new IntervalWindow(
                 base.plus(Duration.standardSeconds(30)), base.plus(Duration.standardSeconds(60))))
-        .containsInAnyOrder("k1", "k2", "k3");
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k2"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k3"));
     PAssert.that(distinctValues)
         .inWindow(
             new IntervalWindow(
                 base.plus(Duration.standardSeconds(60)), base.plus(Duration.standardSeconds(90))))
-        .containsInAnyOrder("k4", "k5", "k6");
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k4"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k5"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k6"));
     windowedDistinctPipeline.run();
   }
 
@@ -196,7 +222,11 @@ public class DistinctTest {
                     .withAllowedLateness(Duration.ZERO)
                     .accumulatingFiredPanes())
             .apply(Distinct.create());
-    PAssert.that(distinctValues).containsInAnyOrder("k1", "k2", "k3");
+    PAssert.that(distinctValues)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k2"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "k3"));
     triggeredDistinctPipeline.run();
   }
 
@@ -235,7 +265,11 @@ public class DistinctTest {
                 Distinct.withRepresentativeValueFn(new Keys<Integer>())
                     .withRepresentativeType(TypeDescriptor.of(Integer.class)));
 
-    PAssert.that(distinctValues).containsInAnyOrder(KV.of(1, "k1"), KV.of(2, "k2"), KV.of(3, "k3"));
+    PAssert.that(distinctValues)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(1, "k1")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(2, "k2")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(3, "k3")));
     triggeredDistinctRepresentativePipeline.run();
   }
 
@@ -270,7 +304,8 @@ public class DistinctTest {
                 Distinct.withRepresentativeValueFn(new Keys<Integer>())
                     .withRepresentativeType(TypeDescriptor.of(Integer.class)));
 
-    PAssert.that(distinctValues).containsInAnyOrder(KV.of(1, "k1"));
+    PAssert.that(distinctValues)
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(1, "k1")));
     triggeredDistinctRepresentativePipeline.run();
   }
 }

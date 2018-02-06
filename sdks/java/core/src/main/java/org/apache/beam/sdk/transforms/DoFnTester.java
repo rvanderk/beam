@@ -47,6 +47,7 @@ import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.util.SerializableUtils;
 import org.apache.beam.sdk.util.UserCodeException;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.ValueInSingleWindow;
@@ -57,7 +58,7 @@ import org.joda.time.Instant;
  *
  * <p>For example:
  *
- * <pre> {@code
+ * <pre>{@code
  * DoFn<InputT, OutputT> fn = ...;
  *
  * DoFnTester<InputT, OutputT> fnTester = DoFnTester.of(fn);
@@ -73,18 +74,18 @@ import org.joda.time.Instant;
  *
  * // Process a bigger bundle:
  * Assert.assertThat(fnTester.processBundle(i1, i2, ...), Matchers.hasItems(...));
- * } </pre>
+ * }</pre>
  *
  * @param <InputT> the type of the {@link DoFn}'s (main) input elements
  * @param <OutputT> the type of the {@link DoFn}'s (main) output elements
  */
 public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   /**
-   * Returns a {@code DoFnTester} supporting unit-testing of the given
-   * {@link DoFn}. By default, uses {@link CloningBehavior#CLONE_ONCE}.
+   * Returns a {@code DoFnTester} supporting unit-testing of the given {@link DoFn}. By default,
+   * uses {@link CloningBehavior#CLONE_ONCE}.
    *
-   * <p>The only supported extra parameter of the {@link DoFn.ProcessElement} method is
-   * {@link BoundedWindow}.
+   * <p>The only supported extra parameter of the {@link DoFn.ProcessElement} method is {@link
+   * BoundedWindow}.
    */
   @SuppressWarnings("unchecked")
   public static <InputT, OutputT> DoFnTester<InputT, OutputT> of(DoFn<InputT, OutputT> fn) {
@@ -93,13 +94,12 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Registers the tuple of values of the side input {@link PCollectionView}s to
-   * pass to the {@link DoFn} under test.
+   * Registers the tuple of values of the side input {@link PCollectionView}s to pass to the {@link
+   * DoFn} under test.
    *
    * <p>Resets the state of this {@link DoFnTester}.
    *
-   * <p>If this isn't called, {@code DoFnTester} assumes the
-   * {@link DoFn} takes no side inputs.
+   * <p>If this isn't called, {@code DoFnTester} assumes the {@link DoFn} takes no side inputs.
    */
   public void setSideInputs(Map<PCollectionView<?>, Map<BoundedWindow, ?>> sideInputs) {
     checkState(
@@ -110,11 +110,11 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Registers the values of a side input {@link PCollectionView} to pass to the {@link DoFn}
-   * under test.
+   * Registers the values of a side input {@link PCollectionView} to pass to the {@link DoFn} under
+   * test.
    *
-   * <p>The provided value is the final value of the side input in the specified window, not
-   * the value of the input PCollection in that window.
+   * <p>The provided value is the final value of the side input in the specified window, not the
+   * value of the input PCollection in that window.
    *
    * <p>If this isn't called, {@code DoFnTester} will return the default value for any side input
    * that is used.
@@ -137,8 +137,8 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * When a {@link DoFnTester} should clone the {@link DoFn} under test and how it should manage
-   * the lifecycle of the {@link DoFn}.
+   * When a {@link DoFnTester} should clone the {@link DoFn} under test and how it should manage the
+   * lifecycle of the {@link DoFn}.
    */
   public enum CloningBehavior {
     /**
@@ -158,30 +158,26 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
     DO_NOT_CLONE
   }
 
-  /**
-   * Instruct this {@link DoFnTester} whether or not to clone the {@link DoFn} under test.
-   */
+  /** Instruct this {@link DoFnTester} whether or not to clone the {@link DoFn} under test. */
   public void setCloningBehavior(CloningBehavior newValue) {
     checkState(state == State.UNINITIALIZED, "Wrong state: %s", state);
     this.cloningBehavior = newValue;
   }
 
-  /**
-   *  Indicates whether this {@link DoFnTester} will clone the {@link DoFn} under test.
-   */
+  /** Indicates whether this {@link DoFnTester} will clone the {@link DoFn} under test. */
   public CloningBehavior getCloningBehavior() {
     return cloningBehavior;
   }
 
   /**
-   * A convenience operation that first calls {@link #startBundle},
-   * then calls {@link #processElement} on each of the input elements, then
-   * calls {@link #finishBundle}, then returns the result of
-   * {@link #takeOutputElements}.
+   * A convenience operation that first calls {@link #startBundle}, then calls {@link
+   * #processElement} on each of the input elements, then calls {@link #finishBundle}, then returns
+   * the result of {@link #takeOutputElements}.
    */
-  public List<OutputT> processBundle(Iterable <? extends InputT> inputElements) throws Exception {
+  public List<OutputT> processBundle(Iterable<TenantAwareValue<InputT>> inputElements)
+      throws Exception {
     startBundle();
-    for (InputT inputElement : inputElements) {
+    for (TenantAwareValue<InputT> inputElement : inputElements) {
       processElement(inputElement);
     }
     finishBundle();
@@ -189,26 +185,27 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * A convenience method for testing {@link DoFn DoFns} with bundles of elements.
-   * Logic proceeds as follows:
+   * A convenience method for testing {@link DoFn DoFns} with bundles of elements. Logic proceeds as
+   * follows:
    *
    * <ol>
-   *   <li>Calls {@link #startBundle}.</li>
-   *   <li>Calls {@link #processElement} on each of the arguments.</li>
-   *   <li>Calls {@link #finishBundle}.</li>
-   *   <li>Returns the result of {@link #takeOutputElements}.</li>
+   *   <li>Calls {@link #startBundle}.
+   *   <li>Calls {@link #processElement} on each of the arguments.
+   *   <li>Calls {@link #finishBundle}.
+   *   <li>Returns the result of {@link #takeOutputElements}.
    * </ol>
    */
   @SafeVarargs
-  public final List<OutputT> processBundle(InputT... inputElements) throws Exception {
+  public final List<OutputT> processBundle(TenantAwareValue<InputT>... inputElements)
+      throws Exception {
     return processBundle(Arrays.asList(inputElements));
   }
 
   /**
    * Calls the {@link DoFn.StartBundle} method on the {@link DoFn} under test.
    *
-   * <p>If needed, first creates a fresh instance of the {@link DoFn} under test and calls
-   * {@link DoFn.Setup}.
+   * <p>If needed, first creates a fresh instance of the {@link DoFn} under test and calls {@link
+   * DoFn.Setup}.
    */
   public void startBundle() throws Exception {
     checkState(
@@ -237,50 +234,51 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Calls the {@link DoFn.ProcessElement} method on the {@link DoFn} under test, in a
-   * context where {@link DoFn.ProcessContext#element} returns the
-   * given element and the element is in the global window.
+   * Calls the {@link DoFn.ProcessElement} method on the {@link DoFn} under test, in a context where
+   * {@link DoFn.ProcessContext#element} returns the given element and the element is in the global
+   * window.
    *
-   * <p>Will call {@link #startBundle} automatically, if it hasn't
-   * already been called.
+   * <p>Will call {@link #startBundle} automatically, if it hasn't already been called.
    *
-   * @throws IllegalStateException if the {@code DoFn} under test has already
-   * been finished
+   * @throws IllegalStateException if the {@code DoFn} under test has already been finished
    */
-  public void processElement(InputT element) throws Exception {
-    processTimestampedElement(TimestampedValue.atMinimumTimestamp(element));
+  public void processElement(TenantAwareValue<InputT> element) throws Exception {
+    processTimestampedElement(
+        TenantAwareValue.of(
+            element.getTenantId(), TimestampedValue.atMinimumTimestamp(element.getValue())));
   }
 
   /**
-   * Calls {@link DoFn.ProcessElement} on the {@code DoFn} under test, in a
-   * context where {@link DoFn.ProcessContext#element} returns the
-   * given element and timestamp and the element is in the global window.
+   * Calls {@link DoFn.ProcessElement} on the {@code DoFn} under test, in a context where {@link
+   * DoFn.ProcessContext#element} returns the given element and timestamp and the element is in the
+   * global window.
    *
-   * <p>Will call {@link #startBundle} automatically, if it hasn't
-   * already been called.
+   * <p>Will call {@link #startBundle} automatically, if it hasn't already been called.
    */
-  public void processTimestampedElement(TimestampedValue<InputT> element) throws Exception {
+  public void processTimestampedElement(TenantAwareValue<TimestampedValue<InputT>> element)
+      throws Exception {
     checkNotNull(element, "Timestamped element cannot be null");
     processWindowedElement(
-        element.getValue(), element.getTimestamp(), GlobalWindow.INSTANCE);
+        (TenantAwareValue) element, element.getValue().getTimestamp(), GlobalWindow.INSTANCE);
   }
 
   /**
-   * Calls {@link DoFn.ProcessElement} on the {@code DoFn} under test, in a
-   * context where {@link DoFn.ProcessContext#element} returns the
-   * given element and timestamp and the element is in the given window.
+   * Calls {@link DoFn.ProcessElement} on the {@code DoFn} under test, in a context where {@link
+   * DoFn.ProcessContext#element} returns the given element and timestamp and the element is in the
+   * given window.
    *
-   * <p>Will call {@link #startBundle} automatically, if it hasn't
-   * already been called.
+   * <p>Will call {@link #startBundle} automatically, if it hasn't already been called.
    */
   public void processWindowedElement(
-      InputT element, Instant timestamp, final BoundedWindow window) throws Exception {
+      TenantAwareValue<InputT> element, Instant timestamp, final BoundedWindow window)
+      throws Exception {
     if (state != State.BUNDLE_STARTED) {
       startBundle();
     }
     try {
       final DoFn<InputT, OutputT>.ProcessContext processContext =
           createProcessContext(
+              element.getTenantId(),
               ValueInSingleWindow.of(element, timestamp, window, PaneInfo.NO_FIRING));
       fnInvoker.invokeProcessElement(
           new DoFnInvoker.ArgumentProvider<InputT, OutputT>() {
@@ -343,11 +341,11 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
    * Calls the {@link DoFn.FinishBundle} method of the {@link DoFn} under test.
    *
    * <p>If {@link #setCloningBehavior} was called with {@link CloningBehavior#CLONE_PER_BUNDLE},
-   * then also calls {@link DoFn.Teardown} on the {@link DoFn}, and it will be cloned and
-   * {@link DoFn.Setup} again when processing the next bundle.
+   * then also calls {@link DoFn.Teardown} on the {@link DoFn}, and it will be cloned and {@link
+   * DoFn.Setup} again when processing the next bundle.
    *
-   * @throws IllegalStateException if {@link DoFn.FinishBundle} has already been called
-   * for this bundle.
+   * @throws IllegalStateException if {@link DoFn.FinishBundle} has already been called for this
+   *     bundle.
    */
   public void finishBundle() throws Exception {
     checkState(
@@ -370,13 +368,11 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Returns the elements output so far to the main output.  Does not
-   * clear them, so subsequent calls will continue to include these
-   * elements.
+   * Returns the elements output so far to the main output. Does not clear them, so subsequent calls
+   * will continue to include these elements.
    *
    * @see #takeOutputElements
    * @see #clearOutputElements
-   *
    */
   public List<OutputT> peekOutputElements() {
     return peekOutputElementsWithTimestamp()
@@ -386,9 +382,8 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Returns the elements output so far to the main output with associated timestamps.  Does not
-   * clear them, so subsequent calls will continue to include these.
-   * elements.
+   * Returns the elements output so far to the main output with associated timestamps. Does not
+   * clear them, so subsequent calls will continue to include these. elements.
    *
    * @see #takeOutputElementsWithTimestamp
    * @see #clearOutputElements
@@ -398,7 +393,10 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
     // TODO: Should we return an unmodifiable list?
     return getImmutableOutput(mainOutputTag)
         .stream()
-        .map(input -> TimestampedValue.of(input.getValue(), input.getTimestamp()))
+        .map(
+            input ->
+                TimestampedValue.of(
+                    input.getValue().getValue().getValue(), input.getValue().getTimestamp()))
         .collect(Collectors.toList());
   }
 
@@ -415,12 +413,12 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
    * associated timestamps.
    */
   public List<TimestampedValue<OutputT>> peekOutputElementsInWindow(
-      TupleTag<OutputT> tag,
-      BoundedWindow window) {
+      TupleTag<OutputT> tag, BoundedWindow window) {
     ImmutableList.Builder<TimestampedValue<OutputT>> valuesBuilder = ImmutableList.builder();
-    for (ValueInSingleWindow<OutputT> value : getImmutableOutput(tag)) {
-      if (value.getWindow().equals(window)) {
-        valuesBuilder.add(TimestampedValue.of(value.getValue(), value.getTimestamp()));
+    for (TenantAwareValue<ValueInSingleWindow<OutputT>> value : getImmutableOutput(tag)) {
+      if (value.getValue().getWindow().equals(window)) {
+        valuesBuilder.add(
+            TimestampedValue.of((OutputT) value.getValue(), value.getValue().getTimestamp()));
       }
     }
     return valuesBuilder.build();
@@ -436,8 +434,8 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Returns the elements output so far to the main output.
-   * Clears the list so these elements don't appear in future calls.
+   * Returns the elements output so far to the main output. Clears the list so these elements don't
+   * appear in future calls.
    *
    * @see #peekOutputElements
    */
@@ -448,8 +446,8 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Returns the elements output so far to the main output with associated timestamps.
-   * Clears the list so these elements don't appear in future calls.
+   * Returns the elements output so far to the main output with associated timestamps. Clears the
+   * list so these elements don't appear in future calls.
    *
    * @see #peekOutputElementsWithTimestamp
    * @see #takeOutputElements
@@ -464,18 +462,17 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Returns the elements output so far to the output with the
-   * given tag.  Does not clear them, so subsequent calls will
-   * continue to include these elements.
+   * Returns the elements output so far to the output with the given tag. Does not clear them, so
+   * subsequent calls will continue to include these elements.
    *
    * @see #takeOutputElements
    * @see #clearOutputElements
    */
-  public <T> List<T> peekOutputElements(TupleTag<T> tag) {
+  public <T> List<TenantAwareValue<T>> peekOutputElements(TupleTag<T> tag) {
     // TODO: Should we return an unmodifiable list?
     return getImmutableOutput(tag)
         .stream()
-        .map(ValueInSingleWindow::getValue)
+        .map(v -> TenantAwareValue.of(v.getTenantId(), v.getValue().getValue().getValue()))
         .collect(Collectors.toList());
   }
 
@@ -489,20 +486,20 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   }
 
   /**
-   * Returns the elements output so far to the output with the given tag.
-   * Clears the list so these elements don't appear in future calls.
+   * Returns the elements output so far to the output with the given tag. Clears the list so these
+   * elements don't appear in future calls.
    *
    * @see #peekOutputElements
    */
-  public <T> List<T> takeOutputElements(TupleTag<T> tag) {
-    List<T> resultElems = new ArrayList<>(peekOutputElements(tag));
+  public <T> List<TenantAwareValue<T>> takeOutputElements(TupleTag<T> tag) {
+    List<TenantAwareValue<T>> resultElems = new ArrayList<>(peekOutputElements(tag));
     clearOutputElements(tag);
     return resultElems;
   }
 
-  private <T> List<ValueInSingleWindow<T>> getImmutableOutput(TupleTag<T> tag) {
+  private <T> List<TenantAwareValue<ValueInSingleWindow<T>>> getImmutableOutput(TupleTag<T> tag) {
     @SuppressWarnings({"unchecked", "rawtypes"})
-    List<ValueInSingleWindow<T>> elems = (List) getOutputs().get(tag);
+    List<TenantAwareValue<ValueInSingleWindow<T>>> elems = (List) getOutputs().get(tag);
     return ImmutableList.copyOf(MoreObjects.firstNonNull(elems, Collections.emptyList()));
   }
 
@@ -544,20 +541,22 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
     }
 
     @Override
-    public void output(
-        OutputT output, Instant timestamp, BoundedWindow window) {
-      output(mainOutputTag, output, timestamp, window);
+    public void output(String tenantId, OutputT output, Instant timestamp, BoundedWindow window) {
+      output(tenantId, mainOutputTag, output, timestamp, window);
     }
 
     @Override
-    public <T> void output(TupleTag<T> tag, T output, Instant timestamp, BoundedWindow window) {
+    public <T> void output(
+        String tenantId, TupleTag<T> tag, T output, Instant timestamp, BoundedWindow window) {
       getMutableOutput(tag)
-          .add(ValueInSingleWindow.of(output, timestamp, window, PaneInfo.NO_FIRING));
+          .add(
+              ValueInSingleWindow.of(
+                  TenantAwareValue.of(tenantId, output), timestamp, window, PaneInfo.NO_FIRING));
     }
   }
 
   public DoFn<InputT, OutputT>.ProcessContext createProcessContext(
-      ValueInSingleWindow<InputT> element) {
+      String tenantId, ValueInSingleWindow<InputT> element) {
     return new TestProcessContext(element);
   }
 
@@ -571,7 +570,12 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
 
     @Override
     public InputT element() {
-      return element.getValue();
+      return element.getValue().getValue();
+    }
+
+    @Override
+    public String tenantId() {
+      return element.getValue().getTenantId();
     }
 
     @Override
@@ -579,8 +583,7 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
       Map<BoundedWindow, ?> viewValues = sideInputs.get(view);
       if (viewValues != null) {
         BoundedWindow sideInputWindow =
-            view.getWindowMappingFn()
-                .getSideInputWindow(element.getWindow());
+            view.getWindowMappingFn().getSideInputWindow(element.getWindow());
         @SuppressWarnings("unchecked")
         T windowValue = (T) viewValues.get(sideInputWindow);
         if (windowValue != null) {
@@ -593,8 +596,9 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
       // TODO: Update this to supply a materialization dependent on actual URN of materialization.
       // Currently the SDK only supports the multimap materialization and it expects a
       // mapping function.
-      checkState(Materializations.MULTIMAP_MATERIALIZATION_URN.equals(
-          view.getViewFn().getMaterialization().getUrn()),
+      checkState(
+          Materializations.MULTIMAP_MATERIALIZATION_URN.equals(
+              view.getViewFn().getMaterialization().getUrn()),
           "Only materializations of type %s supported, received %s",
           Materializations.MULTIMAP_MATERIALIZATION_URN,
           view.getViewFn().getMaterialization().getUrn());
@@ -640,6 +644,33 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
     @Override
     public <T> void outputWithTimestamp(TupleTag<T> tag, T output, Instant timestamp) {
       getMutableOutput(tag)
+          .add(
+              ValueInSingleWindow.of(
+                  TenantAwareValue.of(element.getValue().getTenantId(), output),
+                  timestamp,
+                  element.getWindow(),
+                  element.getPane()));
+    }
+
+    @Override
+    public void output(TenantAwareValue<OutputT> output) {
+      output(mainOutputTag, output);
+    }
+
+    @Override
+    public void outputWithTimestamp(TenantAwareValue<OutputT> output, Instant timestamp) {
+      outputWithTimestamp(mainOutputTag, output, timestamp);
+    }
+
+    @Override
+    public <T> void output(TupleTag<T> tag, TenantAwareValue<T> output) {
+      outputWithTimestamp(tag, output, element.getTimestamp());
+    }
+
+    @Override
+    public <T> void outputWithTimestamp(
+        TupleTag<T> tag, TenantAwareValue<T> output, Instant timestamp) {
+      getMutableOutput(tag)
           .add(ValueInSingleWindow.of(output, timestamp, element.getWindow(), element.getPane()));
     }
   }
@@ -680,8 +711,7 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
   private CloningBehavior cloningBehavior = CloningBehavior.CLONE_ONCE;
 
   /** The side input values to provide to the {@link DoFn} under test. */
-  private Map<PCollectionView<?>, Map<BoundedWindow, ?>> sideInputs =
-      new HashMap<>();
+  private Map<PCollectionView<?>, Map<BoundedWindow, ?>> sideInputs = new HashMap<>();
 
   /** The output tags used by the {@link DoFn} under test. */
   private TupleTag<OutputT> mainOutputTag = new TupleTag<>();
@@ -733,10 +763,10 @@ public class DoFnTester<InputT, OutputT> implements AutoCloseable {
     if (cloningBehavior.equals(CloningBehavior.DO_NOT_CLONE)) {
       fn = origFn;
     } else {
-      fn = (DoFn<InputT, OutputT>)
-          SerializableUtils.deserializeFromByteArray(
-              SerializableUtils.serializeToByteArray(origFn),
-              origFn.toString());
+      fn =
+          (DoFn<InputT, OutputT>)
+              SerializableUtils.deserializeFromByteArray(
+                  SerializableUtils.serializeToByteArray(origFn), origFn.toString());
     }
     fnInvoker = DoFnInvokers.invokerFor(fn);
     fnInvoker.invokeSetup();

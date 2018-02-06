@@ -24,6 +24,7 @@ import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.transforms.windowing.PaneInfo.Timing;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.beam.sdk.values.ValueInSingleWindow;
 
@@ -37,8 +38,7 @@ import org.apache.beam.sdk.values.ValueInSingleWindow;
  * cannot be obtained when the extractor is created.
  */
 final class PaneExtractors {
-  private PaneExtractors() {
-  }
+  private PaneExtractors() {}
 
   static <T> SimpleFunction<Iterable<ValueInSingleWindow<T>>, Iterable<T>> onlyPane(
       PAssert.PAssertionSite site) {
@@ -74,9 +74,10 @@ final class PaneExtractors {
     }
 
     @Override
-    public Iterable<T> apply(Iterable<ValueInSingleWindow<T>> input) {
+    public TenantAwareValue<Iterable<T>> apply(
+        TenantAwareValue<Iterable<ValueInSingleWindow<T>>> input) {
       List<T> outputs = new ArrayList<>();
-      for (ValueInSingleWindow<T> value : input) {
+      for (ValueInSingleWindow<T> value : input.getValue()) {
         if (!value.getPane().isFirst() || !value.getPane().isLast()) {
           throw site.wrap(
               String.format(
@@ -84,81 +85,82 @@ final class PaneExtractors {
                       + "a value %s in a pane that is %s.",
                   value, value.getPane().isFirst() ? "not the last pane" : "not the first pane"));
         }
-        outputs.add(value.getValue());
+        outputs.add(value.getValue().getValue());
       }
-      return outputs;
+      return TenantAwareValue.of(input.getTenantId(), outputs);
     }
   }
-
 
   private static class ExtractOnTimePane<T>
       extends SimpleFunction<Iterable<ValueInSingleWindow<T>>, Iterable<T>> {
     @Override
-    public Iterable<T> apply(Iterable<ValueInSingleWindow<T>> input) {
+    public TenantAwareValue<Iterable<T>> apply(
+        TenantAwareValue<Iterable<ValueInSingleWindow<T>>> input) {
       List<T> outputs = new ArrayList<>();
-      for (ValueInSingleWindow<T> value : input) {
+      for (ValueInSingleWindow<T> value : input.getValue()) {
         if (value.getPane().getTiming().equals(Timing.ON_TIME)) {
-          outputs.add(value.getValue());
+          outputs.add(value.getValue().getValue());
         }
       }
-      return outputs;
+      return TenantAwareValue.of(input.getTenantId(), outputs);
     }
   }
-
 
   private static class ExtractFinalPane<T>
       extends SimpleFunction<Iterable<ValueInSingleWindow<T>>, Iterable<T>> {
     @Override
-    public Iterable<T> apply(Iterable<ValueInSingleWindow<T>> input) {
+    public TenantAwareValue<Iterable<T>> apply(
+        TenantAwareValue<Iterable<ValueInSingleWindow<T>>> input) {
       List<T> outputs = new ArrayList<>();
-      for (ValueInSingleWindow<T> value : input) {
+      for (ValueInSingleWindow<T> value : input.getValue()) {
         if (value.getPane().isLast()) {
-          outputs.add(value.getValue());
+          outputs.add(value.getValue().getValue());
         }
       }
-      return outputs;
+      return TenantAwareValue.of(input.getTenantId(), outputs);
     }
   }
-
 
   private static class ExtractAllPanes<T>
       extends SimpleFunction<Iterable<ValueInSingleWindow<T>>, Iterable<T>> {
     @Override
-    public Iterable<T> apply(Iterable<ValueInSingleWindow<T>> input) {
+    public TenantAwareValue<Iterable<T>> apply(
+        TenantAwareValue<Iterable<ValueInSingleWindow<T>>> input) {
       List<T> outputs = new ArrayList<>();
-      for (ValueInSingleWindow<T> value : input) {
-        outputs.add(value.getValue());
+      for (ValueInSingleWindow<T> value : input.getValue()) {
+        outputs.add(value.getValue().getValue());
       }
-      return outputs;
+      return TenantAwareValue.of(input.getTenantId(), outputs);
     }
   }
-
 
   private static class ExtractNonLatePanes<T>
       extends SimpleFunction<Iterable<ValueInSingleWindow<T>>, Iterable<T>> {
     @Override
-    public Iterable<T> apply(Iterable<ValueInSingleWindow<T>> input) {
+    public TenantAwareValue<Iterable<T>> apply(
+        TenantAwareValue<Iterable<ValueInSingleWindow<T>>> input) {
       List<T> outputs = new ArrayList<>();
-      for (ValueInSingleWindow<T> value : input) {
+      for (ValueInSingleWindow<T> value : input.getValue()) {
         if (value.getPane().getTiming() != PaneInfo.Timing.LATE) {
-          outputs.add(value.getValue());
+          outputs.add(value.getValue().getValue());
         }
       }
-      return outputs;
+      return TenantAwareValue.of(input.getTenantId(), outputs);
     }
   }
 
   private static class ExtractEarlyPanes<T>
       extends SimpleFunction<Iterable<ValueInSingleWindow<T>>, Iterable<T>> {
     @Override
-    public Iterable<T> apply(Iterable<ValueInSingleWindow<T>> input) {
+    public TenantAwareValue<Iterable<T>> apply(
+        TenantAwareValue<Iterable<ValueInSingleWindow<T>>> input) {
       List<T> outputs = new ArrayList<>();
-      for (ValueInSingleWindow<T> value : input) {
+      for (ValueInSingleWindow<T> value : input.getValue()) {
         if (value.getPane().getTiming() == PaneInfo.Timing.EARLY) {
-          outputs.add(value.getValue());
+          outputs.add(value.getValue().getValue());
         }
       }
-      return outputs;
+      return TenantAwareValue.of(input.getTenantId(), outputs);
     }
   }
 }

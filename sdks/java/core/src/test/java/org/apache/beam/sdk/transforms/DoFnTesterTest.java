@@ -37,6 +37,7 @@ import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.hamcrest.Matchers;
 import org.joda.time.Duration;
@@ -47,9 +48,7 @@ import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for {@link DoFnTester}.
- */
+/** Tests for {@link DoFnTester}. */
 @RunWith(JUnit4.class)
 public class DoFnTesterTest {
 
@@ -61,7 +60,7 @@ public class DoFnTesterTest {
     for (DoFnTester.CloningBehavior cloning : DoFnTester.CloningBehavior.values()) {
       try (DoFnTester<Long, String> tester = DoFnTester.of(new CounterDoFn())) {
         tester.setCloningBehavior(cloning);
-        tester.processElement(1L);
+        tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L));
 
         List<String> take = tester.takeOutputElements();
 
@@ -84,16 +83,16 @@ public class DoFnTesterTest {
         tester.startBundle();
 
         // process a couple of elements.
-        tester.processElement(1L);
-        tester.processElement(2L);
+        tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L));
+        tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L));
 
         // peek the first 2 outputs.
         List<String> peek = tester.peekOutputElements();
         assertThat(peek, hasItems("1", "2"));
 
         // process a couple more.
-        tester.processElement(3L);
-        tester.processElement(4L);
+        tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L));
+        tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4L));
 
         // peek all the outputs so far.
         peek = tester.peekOutputElements();
@@ -108,8 +107,8 @@ public class DoFnTesterTest {
         assertTrue(tester.takeOutputElements().isEmpty());
 
         // process a couple more.
-        tester.processElement(5L);
-        tester.processElement(6L);
+        tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5L));
+        tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6L));
 
         // peek and take now have only the 2 last outputs.
         peek = tester.peekOutputElements();
@@ -128,7 +127,13 @@ public class DoFnTesterTest {
       try (DoFnTester<Long, String> tester = DoFnTester.of(new CounterDoFn())) {
         tester.setCloningBehavior(cloning);
         // processBundle() returns all the output like takeOutputElements().
-        assertThat(tester.processBundle(1L, 2L, 3L, 4L), hasItems("1", "2", "3", "4"));
+        assertThat(
+            tester.processBundle(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4L)),
+            hasItems("1", "2", "3", "4"));
 
         // peek now returns nothing.
         assertTrue(tester.peekOutputElements().isEmpty());
@@ -142,9 +147,24 @@ public class DoFnTesterTest {
       try (DoFnTester<Long, String> tester = DoFnTester.of(new CounterDoFn())) {
         tester.setCloningBehavior(cloning);
         // processBundle() returns all the output like takeOutputElements().
-        assertThat(tester.processBundle(1L, 2L, 3L, 4L), hasItems("1", "2", "3", "4"));
-        assertThat(tester.processBundle(5L, 6L, 7L), hasItems("5", "6", "7"));
-        assertThat(tester.processBundle(8L, 9L), hasItems("8", "9"));
+        assertThat(
+            tester.processBundle(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4L)),
+            hasItems("1", "2", "3", "4"));
+        assertThat(
+            tester.processBundle(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 7L)),
+            hasItems("5", "6", "7"));
+        assertThat(
+            tester.processBundle(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 8L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 9L)),
+            hasItems("8", "9"));
 
         // peek now returns nothing.
         assertTrue(tester.peekOutputElements().isEmpty());
@@ -175,9 +195,14 @@ public class DoFnTesterTest {
     try (DoFnTester<Long, String> tester = DoFnTester.of(fn)) {
       tester.setCloningBehavior(DoFnTester.CloningBehavior.DO_NOT_CLONE);
 
-      tester.processBundle(1L, 2L, 3L);
-      tester.processBundle(4L, 5L);
-      tester.processBundle(6L);
+      tester.processBundle(
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L));
+      tester.processBundle(
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4L),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5L));
+      tester.processBundle(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6L));
     }
     assertEquals(1, numSetupCalls.get());
     assertEquals(1, numTeardownCalls.get());
@@ -208,9 +233,20 @@ public class DoFnTesterTest {
     try (DoFnTester<Long, String> tester = DoFnTester.of(new CountBundleCallsFn())) {
       tester.setCloningBehavior(DoFnTester.CloningBehavior.CLONE_ONCE);
 
-      assertThat(tester.processBundle(1L, 2L, 3L), contains("1/0", "1/0", "1/0"));
-      assertThat(tester.processBundle(4L, 5L), contains("2/1", "2/1"));
-      assertThat(tester.processBundle(6L), contains("3/2"));
+      assertThat(
+          tester.processBundle(
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L),
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L),
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L)),
+          contains("1/0", "1/0", "1/0"));
+      assertThat(
+          tester.processBundle(
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4L),
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5L)),
+          contains("2/1", "2/1"));
+      assertThat(
+          tester.processBundle(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6L)),
+          contains("3/2"));
     }
   }
 
@@ -219,16 +255,29 @@ public class DoFnTesterTest {
     try (DoFnTester<Long, String> tester = DoFnTester.of(new CountBundleCallsFn())) {
       tester.setCloningBehavior(DoFnTester.CloningBehavior.CLONE_PER_BUNDLE);
 
-      assertThat(tester.processBundle(1L, 2L, 3L), contains("1/0", "1/0", "1/0"));
-      assertThat(tester.processBundle(4L, 5L), contains("1/0", "1/0"));
-      assertThat(tester.processBundle(6L), contains("1/0"));
+      assertThat(
+          tester.processBundle(
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L),
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L),
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L)),
+          contains("1/0", "1/0", "1/0"));
+      assertThat(
+          tester.processBundle(
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4L),
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5L)),
+          contains("1/0", "1/0"));
+      assertThat(
+          tester.processBundle(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6L)),
+          contains("1/0"));
     }
   }
 
   @Test
   public void processTimestampedElement() throws Exception {
     try (DoFnTester<Long, TimestampedValue<Long>> tester = DoFnTester.of(new ReifyTimestamps())) {
-      TimestampedValue<Long> input = TimestampedValue.of(1L, new Instant(100));
+      TenantAwareValue<TimestampedValue<Long>> input =
+          TenantAwareValue.of(
+              TenantAwareValue.NULL_TENANT, TimestampedValue.of(1L, new Instant(100)));
       tester.processTimestampedElement(input);
       assertThat(tester.takeOutputElements(), contains(input));
     }
@@ -244,16 +293,16 @@ public class DoFnTesterTest {
   @Test
   public void processElementWithOutputTimestamp() throws Exception {
     try (DoFnTester<Long, String> tester = DoFnTester.of(new CounterDoFn())) {
-      tester.processElement(1L);
-      tester.processElement(2L);
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L));
 
       List<TimestampedValue<String>> peek = tester.peekOutputElementsWithTimestamp();
       TimestampedValue<String> one = TimestampedValue.of("1", new Instant(1000L));
       TimestampedValue<String> two = TimestampedValue.of("2", new Instant(2000L));
       assertThat(peek, hasItems(one, two));
 
-      tester.processElement(3L);
-      tester.processElement(4L);
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4L));
 
       TimestampedValue<String> three = TimestampedValue.of("3", new Instant(3000L));
       TimestampedValue<String> four = TimestampedValue.of("4", new Instant(4000L));
@@ -277,8 +326,8 @@ public class DoFnTesterTest {
   public void peekValuesInWindow() throws Exception {
     try (DoFnTester<Long, String> tester = DoFnTester.of(new CounterDoFn())) {
       tester.startBundle();
-      tester.processElement(1L);
-      tester.processElement(2L);
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L));
       tester.finishBundle();
 
       assertThat(
@@ -295,30 +344,31 @@ public class DoFnTesterTest {
   @Test
   public void fnWithSideInputDefault() throws Exception {
     PCollection<Integer> pCollection = p.apply(Create.empty(VarIntCoder.of()));
-    final PCollectionView<Integer> value = pCollection.apply(
-        View.<Integer>asSingleton().withDefaultValue(0));
+    final PCollectionView<Integer> value =
+        pCollection.apply(View.<Integer>asSingleton().withDefaultValue(0));
 
     try (DoFnTester<Integer, Integer> tester = DoFnTester.of(new SideInputDoFn(value))) {
-      tester.processElement(1);
-      tester.processElement(2);
-      tester.processElement(4);
-      tester.processElement(8);
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 8));
       assertThat(tester.peekOutputElements(), containsInAnyOrder(0, 0, 0, 0));
     }
   }
 
   @Test
   public void fnWithSideInputExplicit() throws Exception {
-    PCollection<Integer> pCollection = p.apply(Create.of(-2));
-    final PCollectionView<Integer> value = pCollection.apply(
-        View.<Integer>asSingleton().withDefaultValue(0));
+    PCollection<Integer> pCollection =
+        p.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -2)));
+    final PCollectionView<Integer> value =
+        pCollection.apply(View.<Integer>asSingleton().withDefaultValue(0));
 
     try (DoFnTester<Integer, Integer> tester = DoFnTester.of(new SideInputDoFn(value))) {
       tester.setSideInput(value, GlobalWindow.INSTANCE, -2);
-      tester.processElement(16);
-      tester.processElement(32);
-      tester.processElement(64);
-      tester.processElement(128);
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 16));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 32));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 64));
+      tester.processElement(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 128));
       tester.finishBundle();
 
       assertThat(tester.peekOutputElements(), containsInAnyOrder(-2, -2, -2, -2));
@@ -331,10 +381,13 @@ public class DoFnTesterTest {
     try (DoFnTester<Integer, KV<Integer, BoundedWindow>> tester =
         DoFnTester.of(new DoFnWithWindowParameter())) {
       BoundedWindow firstWindow = new IntervalWindow(now, now.plus(Duration.standardMinutes(1)));
-      tester.processWindowedElement(1, now, firstWindow);
-      tester.processWindowedElement(2, now, firstWindow);
+      tester.processWindowedElement(
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1), now, firstWindow);
+      tester.processWindowedElement(
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2), now, firstWindow);
       BoundedWindow secondWindow = new IntervalWindow(now, now.plus(Duration.standardMinutes(4)));
-      tester.processWindowedElement(3, now, secondWindow);
+      tester.processWindowedElement(
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3), now, secondWindow);
       tester.finishBundle();
 
       assertThat(
@@ -344,8 +397,7 @@ public class DoFnTesterTest {
               TimestampedValue.of(KV.of(2, firstWindow), now)));
       assertThat(
           tester.peekOutputElementsInWindow(secondWindow),
-          containsInAnyOrder(
-              TimestampedValue.of(KV.of(3, secondWindow), now)));
+          containsInAnyOrder(TimestampedValue.of(KV.of(3, secondWindow), now)));
     }
   }
 
@@ -362,9 +414,24 @@ public class DoFnTesterTest {
       try (DoFnTester<Integer, Integer> tester = DoFnTester.of(new BundleCounterDoFn())) {
         tester.setCloningBehavior(cloning);
 
-        assertThat(tester.processBundle(1, 2, 3, 4), contains(4));
-        assertThat(tester.processBundle(5, 6, 7), contains(3));
-        assertThat(tester.processBundle(8, 9), contains(2));
+        assertThat(
+            tester.processBundle(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4)),
+            contains(4));
+        assertThat(
+            tester.processBundle(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 7)),
+            contains(3));
+        assertThat(
+            tester.processBundle(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 8),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 9)),
+            contains(2));
       }
     }
   }
@@ -384,7 +451,7 @@ public class DoFnTesterTest {
 
     @FinishBundle
     public void finishBundle(FinishBundleContext c) {
-      c.output(elements, Instant.now(), GlobalWindow.INSTANCE);
+      c.output(TenantAwareValue.NULL_TENANT, elements, Instant.now(), GlobalWindow.INSTANCE);
     }
   }
 
@@ -402,8 +469,8 @@ public class DoFnTesterTest {
   }
 
   /**
-   * A {@link DoFn} that adds values to a user metric and converts input to String in
-   * {@link DoFn.ProcessElement @ProcessElement}.
+   * A {@link DoFn} that adds values to a user metric and converts input to String in {@link
+   * DoFn.ProcessElement @ProcessElement}.
    */
   private static class CounterDoFn extends DoFn<Long, String> {
     Counter agg = Metrics.counter(CounterDoFn.class, "ctr");
@@ -416,6 +483,7 @@ public class DoFnTesterTest {
       INSIDE_BUNDLE,
       TORN_DOWN
     }
+
     private LifecycleState state = LifecycleState.UNINITIALIZED;
 
     @Setup

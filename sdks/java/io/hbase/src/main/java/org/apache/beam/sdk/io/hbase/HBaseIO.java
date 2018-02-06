@@ -45,6 +45,7 @@ import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PDone;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ClusterStatus;
 import org.apache.hadoop.hbase.HRegionLocation;
@@ -490,6 +491,11 @@ public class HBaseIO {
     @Override
     public Result getCurrent() throws NoSuchElementException {
       return current;
+    }
+
+    @Override
+    public String getCurrentTenantId() {
+      return TenantAwareValue.NULL_TENANT;
     }
 
     @Override

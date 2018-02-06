@@ -124,7 +124,7 @@ public final class DefaultFilenamePolicy extends FilenamePolicy {
 
     /** Sets the base filename. */
     public Params withBaseFilename(ResourceId baseFilename) {
-      return withBaseFilename(StaticValueProvider.of(baseFilename));
+      return withBaseFilename(StaticValueProvider.of("SYS0", baseFilename));
     }
 
     /** Like {@link #withBaseFilename(ResourceId)}, but takes in a {@link ValueProvider}. */
@@ -157,6 +157,7 @@ public final class DefaultFilenamePolicy extends FilenamePolicy {
           && shardTemplate.equals(other.shardTemplate)
           && suffix.equals(other.suffix);
     }
+
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
@@ -189,7 +190,7 @@ public final class DefaultFilenamePolicy extends FilenamePolicy {
     @Override
     public Params decode(InputStream inStream) throws IOException {
       ResourceId prefix =
-          FileBasedSink.convertToFileResourceIfPossible(stringCoder.decode(inStream));
+          FileBasedSink.convertToFileResourceIfPossible(stringCoder.decode(inStream)).getValue();
       String shardTemplate = stringCoder.decode(inStream);
       String suffix = stringCoder.decode(inStream);
       return new Params()
@@ -313,7 +314,7 @@ public final class DefaultFilenamePolicy extends FilenamePolicy {
   public ResourceId unwindowedFilename(
       int shardNumber, int numShards, OutputFileHints outputFileHints) {
     return constructName(
-        params.baseFilename.get(),
+        params.baseFilename.get().getValue(),
         params.shardTemplate,
         params.suffix + outputFileHints.getSuggestedFilenameSuffix(),
         shardNumber,
@@ -332,7 +333,7 @@ public final class DefaultFilenamePolicy extends FilenamePolicy {
     String paneStr = paneInfoToString(paneInfo);
     String windowStr = windowToString(window);
     return constructName(
-        params.baseFilename.get(),
+        params.baseFilename.get().getValue(),
         params.shardTemplate,
         params.suffix + outputFileHints.getSuggestedFilenameSuffix(),
         shardNumber,

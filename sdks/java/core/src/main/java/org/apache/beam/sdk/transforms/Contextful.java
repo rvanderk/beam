@@ -22,6 +22,7 @@ import java.io.Serializable;
 import org.apache.beam.sdk.annotations.Experimental;
 import org.apache.beam.sdk.annotations.Experimental.Kind;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /** Pair of a bit of user code (a "closure") and the {@link Requirements} needed to run it. */
 @Experimental(Kind.CONTEXTFUL)
@@ -67,7 +68,7 @@ public final class Contextful<ClosureT> implements Serializable {
      * context only for the capabilities declared in the {@link Contextful#getRequirements} of the
      * enclosing {@link Contextful}.
      */
-    OutputT apply(InputT element, Context c) throws Exception;
+    TenantAwareValue<OutputT> apply(TenantAwareValue<InputT> element, Context c) throws Exception;
 
     /** An accessor for additional capabilities available in {@link #apply}. */
     abstract class Context {
@@ -85,7 +86,7 @@ public final class Contextful<ClosureT> implements Serializable {
        * Contextful#getClosure() closure} from inside a {@link DoFn}.
        */
       public static <InputT> Context wrapProcessContext(final DoFn<InputT, ?>.ProcessContext c) {
-        return new ContextFromProcessContext<>(c);
+        return new ContextFromProcessContext<InputT>(c);
       }
 
       private static class ContextFromProcessContext<InputT> extends Context {

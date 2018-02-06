@@ -77,6 +77,8 @@ import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.POutput;
+import org.apache.beam.sdk.values.TenantAwareValue;
+import org.apache.beam.sdk.values.TenantAwareValue.TenantAwareValueCoder;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.hamcrest.Matchers;
 import org.joda.time.Duration;
@@ -87,44 +89,44 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for Combine transforms.
- */
+/** Tests for Combine transforms. */
 @RunWith(JUnit4.class)
 public class CombineTest implements Serializable {
   // This test is Serializable, just so that it's easy to have
   // anonymous inner classes inside the non-static test methods.
 
-  static final List<KV<String, Integer>> EMPTY_TABLE = Collections.emptyList();
+  static final List<TenantAwareValue<KV<String, Integer>>> EMPTY_TABLE = Collections.emptyList();
 
-  @Rule
-  public final transient TestPipeline pipeline = TestPipeline.create();
+  @Rule public final transient TestPipeline pipeline = TestPipeline.create();
 
-  PCollection<KV<String, Integer>> createInput(Pipeline p,
-                                               List<KV<String, Integer>> table) {
-    return p.apply(Create.of(table).withCoder(
-        KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())));
+  PCollection<KV<String, Integer>> createInput(
+      Pipeline p, List<TenantAwareValue<KV<String, Integer>>> table) {
+    return p.apply(
+        Create.of(table).withCoder(KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())));
   }
 
-  private void runTestSimpleCombine(List<KV<String, Integer>> table,
-                                    int globalSum,
-                                    List<KV<String, String>> perKeyCombines) {
+  private void runTestSimpleCombine(
+      List<TenantAwareValue<KV<String, Integer>>> table,
+      int globalSum,
+      List<TenantAwareValue<KV<String, String>>> perKeyCombines) {
     PCollection<KV<String, Integer>> input = createInput(pipeline, table);
 
     PCollection<Integer> sum = input.apply(Values.create()).apply(Combine.globally(new SumInts()));
 
     PCollection<KV<String, String>> sumPerKey = input.apply(Combine.perKey(new TestCombineFn()));
 
-    PAssert.that(sum).containsInAnyOrder(globalSum);
+    PAssert.that(sum)
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, globalSum));
     PAssert.that(sumPerKey).containsInAnyOrder(perKeyCombines);
 
     pipeline.run();
   }
 
-  private void runTestSimpleCombineWithContext(List<KV<String, Integer>> table,
-                                               int globalSum,
-                                               List<KV<String, String>> perKeyCombines,
-                                               String[] globallyCombines) {
+  private void runTestSimpleCombineWithContext(
+      List<TenantAwareValue<KV<String, Integer>>> table,
+      int globalSum,
+      List<TenantAwareValue<KV<String, String>>> perKeyCombines,
+      TenantAwareValue<String>[] globallyCombines) {
     PCollection<KV<String, Integer>> perKeyInput = createInput(pipeline, table);
     PCollection<Integer> globallyInput = perKeyInput.apply(Values.create());
 
@@ -137,12 +139,14 @@ public class CombineTest implements Serializable {
             Combine.<String, Integer, String>perKey(new TestCombineFnWithContext(globallySumView))
                 .withSideInputs(globallySumView));
 
-    PCollection<String> combineGlobally = globallyInput
-        .apply(Combine.globally(new TestCombineFnWithContext(globallySumView))
-            .withoutDefaults()
-            .withSideInputs(globallySumView));
+    PCollection<String> combineGlobally =
+        globallyInput.apply(
+            Combine.globally(new TestCombineFnWithContext(globallySumView))
+                .withoutDefaults()
+                .withSideInputs(globallySumView));
 
-    PAssert.that(sum).containsInAnyOrder(globalSum);
+    PAssert.that(sum)
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, globalSum));
     PAssert.that(combinePerKey).containsInAnyOrder(perKeyCombines);
     PAssert.that(combineGlobally).containsInAnyOrder(globallyCombines);
 
@@ -153,34 +157,42 @@ public class CombineTest implements Serializable {
   @Category(ValidatesRunner.class)
   @SuppressWarnings({"rawtypes", "unchecked"})
   public void testSimpleCombine() {
-    runTestSimpleCombine(Arrays.asList(
-      KV.of("a", 1),
-      KV.of("a", 1),
-      KV.of("a", 4),
-      KV.of("b", 1),
-      KV.of("b", 13)
-    ), 20, Arrays.asList(KV.of("a", "114"), KV.of("b", "113")));
+    runTestSimpleCombine(
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 4)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 13))),
+        20,
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "114")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "113"))));
   }
 
   @Test
   @Category(ValidatesRunner.class)
   @SuppressWarnings({"rawtypes", "unchecked"})
   public void testSimpleCombineWithContext() {
-    runTestSimpleCombineWithContext(Arrays.asList(
-      KV.of("a", 1),
-      KV.of("a", 1),
-      KV.of("a", 4),
-      KV.of("b", 1),
-      KV.of("b", 13)
-    ), 20,
-        Arrays.asList(KV.of("a", "20:114"), KV.of("b", "20:113")),
-        new String[] {"20:111134"});
+    runTestSimpleCombineWithContext(
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 4)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 13))),
+        20,
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "20:114")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "20:113"))),
+        new TenantAwareValue[] {TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "20:111134")});
   }
 
   @Test
   @Category(ValidatesRunner.class)
   public void testSimpleCombineWithContextEmpty() {
-    runTestSimpleCombineWithContext(EMPTY_TABLE, 0, Collections.emptyList(), new String[] {});
+    runTestSimpleCombineWithContext(
+        EMPTY_TABLE, 0, Collections.emptyList(), new TenantAwareValue[] {});
   }
 
   @Test
@@ -190,9 +202,10 @@ public class CombineTest implements Serializable {
   }
 
   @SuppressWarnings("unchecked")
-  private void runTestBasicCombine(List<KV<String, Integer>> table,
-                                   Set<Integer> globalUnique,
-                                   List<KV<String, Set<Integer>>> perKeyUnique) {
+  private void runTestBasicCombine(
+      List<TenantAwareValue<KV<String, Integer>>> table,
+      TenantAwareValue<Set<Integer>> globalUnique,
+      List<TenantAwareValue<KV<String, Set<Integer>>>> perKeyUnique) {
     PCollection<KV<String, Integer>> input = createInput(pipeline, table);
 
     PCollection<Set<Integer>> unique =
@@ -210,26 +223,34 @@ public class CombineTest implements Serializable {
   @Test
   @Category(ValidatesRunner.class)
   public void testBasicCombine() {
-    runTestBasicCombine(Arrays.asList(
-      KV.of("a", 1),
-      KV.of("a", 1),
-      KV.of("a", 4),
-      KV.of("b", 1),
-      KV.of("b", 13)
-    ), ImmutableSet.of(1, 13, 4), Arrays.asList(
-        KV.of("a", (Set<Integer>) ImmutableSet.of(1, 4)),
-        KV.of("b", (Set<Integer>) ImmutableSet.of(1, 13))));
+    runTestBasicCombine(
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 4)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 13))),
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, ImmutableSet.of(1, 13, 4)),
+        Arrays.asList(
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT, KV.of("a", (Set<Integer>) ImmutableSet.of(1, 4))),
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT, KV.of("b", (Set<Integer>) ImmutableSet.of(1, 13)))));
   }
 
   @Test
   @Category(ValidatesRunner.class)
   public void testBasicCombineEmpty() {
-    runTestBasicCombine(EMPTY_TABLE, ImmutableSet.of(), Collections.emptyList());
+    runTestBasicCombine(
+        EMPTY_TABLE,
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, ImmutableSet.of()),
+        Collections.emptyList());
   }
 
-  private void runTestAccumulatingCombine(List<KV<String, Integer>> table,
-                                          Double globalMean,
-                                          List<KV<String, Double>> perKeyMeans) {
+  private void runTestAccumulatingCombine(
+      List<TenantAwareValue<KV<String, Integer>>> table,
+      TenantAwareValue<Double> globalMean,
+      List<TenantAwareValue<KV<String, Double>>> perKeyMeans) {
     PCollection<KV<String, Integer>> input = createInput(pipeline, table);
 
     PCollection<Double> mean = input.apply(Values.create()).apply(Combine.globally(new MeanInts()));
@@ -249,11 +270,21 @@ public class CombineTest implements Serializable {
         pipeline
             .apply(
                 Create.timestamped(
-                        TimestampedValue.of(KV.of("a", 1), new Instant(0L)),
-                        TimestampedValue.of(KV.of("a", 1), new Instant(1L)),
-                        TimestampedValue.of(KV.of("a", 4), new Instant(6L)),
-                        TimestampedValue.of(KV.of("b", 1), new Instant(7L)),
-                        TimestampedValue.of(KV.of("b", 13), new Instant(8L)))
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 1), new Instant(0L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 1), new Instant(1L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 4), new Instant(6L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("b", 1), new Instant(7L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("b", 13), new Instant(8L))))
                     .withCoder(KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())))
             .apply(Window.into(FixedWindows.of(Duration.millis(2))));
 
@@ -262,10 +293,18 @@ public class CombineTest implements Serializable {
 
     PCollection<KV<String, String>> sumPerKey = input.apply(Combine.perKey(new TestCombineFn()));
 
-    PAssert.that(sum).containsInAnyOrder(2, 5, 13);
+    PAssert.that(sum)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 13));
     PAssert.that(sumPerKey)
         .containsInAnyOrder(
-            Arrays.asList(KV.of("a", "11"), KV.of("a", "4"), KV.of("b", "1"), KV.of("b", "13")));
+            Arrays.asList(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "11")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "4")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "1")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "13"))));
     pipeline.run();
   }
 
@@ -276,18 +315,28 @@ public class CombineTest implements Serializable {
         pipeline
             .apply(
                 Create.timestamped(
-                        TimestampedValue.of(KV.of("a", 1), new Instant(0L)),
-                        TimestampedValue.of(KV.of("a", 1), new Instant(1L)),
-                        TimestampedValue.of(KV.of("a", 4), new Instant(6L)),
-                        TimestampedValue.of(KV.of("b", 1), new Instant(7L)),
-                        TimestampedValue.of(KV.of("b", 13), new Instant(8L)))
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 1), new Instant(0L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 1), new Instant(1L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 4), new Instant(6L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("b", 1), new Instant(7L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("b", 13), new Instant(8L))))
                     .withCoder(KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())))
             .apply(Window.into(FixedWindows.of(Duration.millis(2))));
 
     PCollection<Integer> globallyInput = perKeyInput.apply(Values.create());
 
-    PCollection<Integer> sum = globallyInput
-        .apply("Sum", Combine.globally(new SumInts()).withoutDefaults());
+    PCollection<Integer> sum =
+        globallyInput.apply("Sum", Combine.globally(new SumInts()).withoutDefaults());
 
     PCollectionView<Integer> globallySumView = sum.apply(View.asSingleton());
 
@@ -296,17 +345,29 @@ public class CombineTest implements Serializable {
             Combine.<String, Integer, String>perKey(new TestCombineFnWithContext(globallySumView))
                 .withSideInputs(globallySumView));
 
-    PCollection<String> combineGloballyWithContext = globallyInput
-        .apply(Combine.globally(new TestCombineFnWithContext(globallySumView))
-            .withoutDefaults()
-            .withSideInputs(globallySumView));
+    PCollection<String> combineGloballyWithContext =
+        globallyInput.apply(
+            Combine.globally(new TestCombineFnWithContext(globallySumView))
+                .withoutDefaults()
+                .withSideInputs(globallySumView));
 
-    PAssert.that(sum).containsInAnyOrder(2, 5, 13);
+    PAssert.that(sum)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 13));
     PAssert.that(combinePerKeyWithContext)
         .containsInAnyOrder(
             Arrays.asList(
-                KV.of("a", "2:11"), KV.of("a", "5:4"), KV.of("b", "5:1"), KV.of("b", "13:13")));
-    PAssert.that(combineGloballyWithContext).containsInAnyOrder("2:11", "5:14", "13:13");
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "2:11")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "5:4")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "5:1")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "13:13"))));
+    PAssert.that(combineGloballyWithContext)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "2:11"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "5:14"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "13:13"));
     pipeline.run();
   }
 
@@ -317,54 +378,63 @@ public class CombineTest implements Serializable {
         pipeline
             .apply(
                 Create.timestamped(
-                    TimestampedValue.of("a", new Instant(1L)),
-                    TimestampedValue.of("b", new Instant(2L)),
-                    TimestampedValue.of("c", new Instant(3L))))
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of("a", new Instant(1L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of("b", new Instant(2L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of("c", new Instant(3L)))))
             .apply(Window.into(SlidingWindows.of(Duration.millis(3)).every(Duration.millis(1L))));
     PCollection<List<String>> combined =
         input.apply(
             Combine.globally(
                     new CombineFn<String, List<String>, List<String>>() {
                       @Override
-                      public List<String> createAccumulator() {
-                        return new ArrayList<>();
+                      public TenantAwareValue<List<String>> createAccumulator() {
+                        return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new ArrayList<>());
                       }
 
                       @Override
-                      public List<String> addInput(List<String> accumulator, String input) {
-                        accumulator.add(input);
-                        return accumulator;
+                      public TenantAwareValue<List<String>> addInput(
+                          TenantAwareValue<List<String>> accumulator,
+                          TenantAwareValue<String> input) {
+                        accumulator.getValue().add(input.getValue());
+                        return TenantAwareValue.of(input.getTenantId(), accumulator.getValue());
                       }
 
                       @Override
-                      public List<String> mergeAccumulators(Iterable<List<String>> accumulators) {
+                      public TenantAwareValue<List<String>> mergeAccumulators(
+                          Iterable<TenantAwareValue<List<String>>> accumulators) {
                         // Mutate all of the accumulators. Instances should be used in only one
                         // place, and not
                         // reused after merging.
-                        List<String> cur = createAccumulator();
-                        for (List<String> accumulator : accumulators) {
-                          accumulator.addAll(cur);
+                        TenantAwareValue<List<String>> cur = createAccumulator();
+                        String tenantId = TenantAwareValue.NULL_TENANT;
+                        for (TenantAwareValue<List<String>> accumulator : accumulators) {
+                          accumulator.getValue().addAll(cur.getValue());
+                          tenantId = cur.getTenantId();
                           cur = accumulator;
                         }
                         return cur;
                       }
 
                       @Override
-                      public List<String> extractOutput(List<String> accumulator) {
-                        List<String> result = new ArrayList<>(accumulator);
+                      public TenantAwareValue<List<String>> extractOutput(
+                          TenantAwareValue<List<String>> accumulator) {
+                        List<String> result = new ArrayList<>(accumulator.getValue());
                         Collections.sort(result);
-                        return result;
+                        return TenantAwareValue.of(accumulator.getTenantId(), result);
                       }
                     })
                 .withoutDefaults());
 
     PAssert.that(combined)
         .containsInAnyOrder(
-            ImmutableList.of("a"),
-            ImmutableList.of("a", "b"),
-            ImmutableList.of("a", "b", "c"),
-            ImmutableList.of("b", "c"),
-            ImmutableList.of("c"));
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, ImmutableList.of("a")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, ImmutableList.of("a", "b")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, ImmutableList.of("a", "b", "c")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, ImmutableList.of("b", "c")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, ImmutableList.of("c")));
 
     pipeline.run();
   }
@@ -377,11 +447,21 @@ public class CombineTest implements Serializable {
         pipeline
             .apply(
                 Create.timestamped(
-                        TimestampedValue.of(KV.of("a", 1), new Instant(2L)),
-                        TimestampedValue.of(KV.of("a", 1), new Instant(3L)),
-                        TimestampedValue.of(KV.of("a", 4), new Instant(8L)),
-                        TimestampedValue.of(KV.of("b", 1), new Instant(9L)),
-                        TimestampedValue.of(KV.of("b", 13), new Instant(10L)))
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 1), new Instant(2L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 1), new Instant(3L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 4), new Instant(8L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("b", 1), new Instant(9L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("b", 13), new Instant(10L))))
                     .withCoder(KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())))
             .apply(Window.into(SlidingWindows.of(Duration.millis(2))));
 
@@ -396,25 +476,41 @@ public class CombineTest implements Serializable {
             Combine.<String, Integer, String>perKey(new TestCombineFnWithContext(globallySumView))
                 .withSideInputs(globallySumView));
 
-    PCollection<String> combineGloballyWithContext = globallyInput
-        .apply(Combine.globally(new TestCombineFnWithContext(globallySumView))
-            .withoutDefaults()
-            .withSideInputs(globallySumView));
+    PCollection<String> combineGloballyWithContext =
+        globallyInput.apply(
+            Combine.globally(new TestCombineFnWithContext(globallySumView))
+                .withoutDefaults()
+                .withSideInputs(globallySumView));
 
-    PAssert.that(sum).containsInAnyOrder(1, 2, 1, 4, 5, 14, 13);
+    PAssert.that(sum)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 14),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 13));
     PAssert.that(combinePerKeyWithContext)
         .containsInAnyOrder(
             Arrays.asList(
-                KV.of("a", "1:1"),
-                KV.of("a", "2:11"),
-                KV.of("a", "1:1"),
-                KV.of("a", "4:4"),
-                KV.of("a", "5:4"),
-                KV.of("b", "5:1"),
-                KV.of("b", "14:113"),
-                KV.of("b", "13:13")));
-    PAssert.that(combineGloballyWithContext).containsInAnyOrder(
-      "1:1", "2:11", "1:1", "4:4", "5:14", "14:113", "13:13");
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "1:1")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "2:11")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "1:1")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "4:4")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "5:4")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "5:1")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "14:113")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "13:13"))));
+    PAssert.that(combineGloballyWithContext)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "1:1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "2:11"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "1:1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "4:4"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "5:14"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "14:113"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "13:13"));
     pipeline.run();
   }
 
@@ -428,22 +524,28 @@ public class CombineTest implements Serializable {
   @Test
   @Category(ValidatesRunner.class)
   public void testGlobalCombineWithDefaultsAndTriggers() {
-    PCollection<Integer> input = pipeline.apply(Create.of(1, 1));
+    PCollection<Integer> input =
+        pipeline.apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1)));
 
-    PCollection<String> output = input
-        .apply(Window.<Integer>into(new GlobalWindows())
-            .triggering(Repeatedly.forever(AfterPane.elementCountAtLeast(1)))
-            .accumulatingFiredPanes()
-            .withAllowedLateness(new Duration(0), ClosingBehavior.FIRE_ALWAYS))
-        .apply(Sum.integersGlobally())
-        .apply(ParDo.of(new FormatPaneInfo()));
+    PCollection<String> output =
+        input
+            .apply(
+                Window.<Integer>into(new GlobalWindows())
+                    .triggering(Repeatedly.forever(AfterPane.elementCountAtLeast(1)))
+                    .accumulatingFiredPanes()
+                    .withAllowedLateness(new Duration(0), ClosingBehavior.FIRE_ALWAYS))
+            .apply(Sum.integersGlobally())
+            .apply(ParDo.of(new FormatPaneInfo()));
 
     // The actual elements produced are nondeterministic. Could be one, could be two.
     // But it should certainly have a final element with the correct final sum.
     PAssert.that(output)
         .satisfies(
             input1 -> {
-              assertThat(input1, hasItem("2: true"));
+              assertThat(input1.getValue(), hasItem("2: true"));
               return null;
             });
 
@@ -457,11 +559,21 @@ public class CombineTest implements Serializable {
         pipeline
             .apply(
                 Create.timestamped(
-                        TimestampedValue.of(KV.of("a", 1), new Instant(0L)),
-                        TimestampedValue.of(KV.of("a", 1), new Instant(4L)),
-                        TimestampedValue.of(KV.of("a", 4), new Instant(7L)),
-                        TimestampedValue.of(KV.of("b", 1), new Instant(10L)),
-                        TimestampedValue.of(KV.of("b", 13), new Instant(16L)))
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 1), new Instant(0L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 1), new Instant(4L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("a", 4), new Instant(7L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("b", 1), new Instant(10L))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            TimestampedValue.of(KV.of("b", 13), new Instant(16L))))
                     .withCoder(KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())))
             .apply(Window.into(Sessions.withGapDuration(Duration.millis(5))));
 
@@ -470,9 +582,16 @@ public class CombineTest implements Serializable {
 
     PCollection<KV<String, String>> sumPerKey = input.apply(Combine.perKey(new TestCombineFn()));
 
-    PAssert.that(sum).containsInAnyOrder(7, 13);
+    PAssert.that(sum)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 7),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 13));
     PAssert.that(sumPerKey)
-        .containsInAnyOrder(Arrays.asList(KV.of("a", "114"), KV.of("b", "1"), KV.of("b", "13")));
+        .containsInAnyOrder(
+            Arrays.asList(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "114")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "1")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "13"))));
     pipeline.run();
   }
 
@@ -482,11 +601,21 @@ public class CombineTest implements Serializable {
     PCollection<KV<String, Integer>> perKeyInput =
         pipeline.apply(
             Create.timestamped(
-                    TimestampedValue.of(KV.of("a", 1), new Instant(0L)),
-                    TimestampedValue.of(KV.of("a", 1), new Instant(4L)),
-                    TimestampedValue.of(KV.of("a", 4), new Instant(7L)),
-                    TimestampedValue.of(KV.of("b", 1), new Instant(10L)),
-                    TimestampedValue.of(KV.of("b", 13), new Instant(16L)))
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("a", 1), new Instant(0L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("a", 1), new Instant(4L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("a", 4), new Instant(7L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("b", 1), new Instant(10L))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("b", 13), new Instant(16L))))
                 .withCoder(KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())));
 
     PCollection<Integer> globallyInput = perKeyInput.apply(Values.create());
@@ -518,11 +647,22 @@ public class CombineTest implements Serializable {
                     .withoutDefaults()
                     .withSideInputs(globallyFixedWindowsView));
 
-    PAssert.that(fixedWindowsSum).containsInAnyOrder(2, 4, 1, 13);
+    PAssert.that(fixedWindowsSum)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 13));
     PAssert.that(sessionsCombinePerKey)
         .containsInAnyOrder(
-            Arrays.asList(KV.of("a", "1:114"), KV.of("b", "1:1"), KV.of("b", "0:13")));
-    PAssert.that(sessionsCombineGlobally).containsInAnyOrder("1:1114", "0:13");
+            Arrays.asList(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", "1:114")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "1:1")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", "0:13"))));
+    PAssert.that(sessionsCombineGlobally)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "1:1114"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "0:13"));
     pipeline.run();
   }
 
@@ -543,19 +683,26 @@ public class CombineTest implements Serializable {
   @Test
   @Category(ValidatesRunner.class)
   public void testAccumulatingCombine() {
-    runTestAccumulatingCombine(Arrays.asList(
-      KV.of("a", 1),
-      KV.of("a", 1),
-      KV.of("a", 4),
-      KV.of("b", 1),
-      KV.of("b", 13)
-    ), 4.0, Arrays.asList(KV.of("a", 2.0), KV.of("b", 7.0)));
+    runTestAccumulatingCombine(
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 4)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 13))),
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4.0),
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 2.0)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 7.0))));
   }
 
   @Test
   @Category(ValidatesRunner.class)
   public void testAccumulatingCombineEmpty() {
-    runTestAccumulatingCombine(EMPTY_TABLE, 0.0, Collections.emptyList());
+    runTestAccumulatingCombine(
+        EMPTY_TABLE,
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0.0),
+        Collections.emptyList());
   }
 
   // Checks that Min, Max, Mean, Sum (operations that pass-through to Combine) have good names.
@@ -573,33 +720,50 @@ public class CombineTest implements Serializable {
   }
 
   private static final SerializableFunction<String, Integer> hotKeyFanout =
-      input -> input.equals("a") ? 3 : 0;
+      input ->
+          input.getValue().equals("a")
+              ? TenantAwareValue.of(input.getTenantId(), 3)
+              : TenantAwareValue.of(input.getTenantId(), 0);
 
   private static final SerializableFunction<String, Integer> splitHotKeyFanout =
-      input -> Math.random() < 0.5 ? 3 : 0;
+      input ->
+          Math.random() < 0.5
+              ? TenantAwareValue.of(input.getTenantId(), 3)
+              : TenantAwareValue.of(input.getTenantId(), 0);
 
   @Test
   @Category(ValidatesRunner.class)
   public void testHotKeyCombining() {
-    PCollection<KV<String, Integer>> input = copy(createInput(pipeline, Arrays.asList(
-      KV.of("a", 1),
-      KV.of("a", 1),
-      KV.of("a", 4),
-      KV.of("b", 1),
-      KV.of("b", 13)
-    )), 10);
+    PCollection<KV<String, Integer>> input =
+        copy(
+            createInput(
+                pipeline,
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 4)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 1)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 13)))),
+            10);
 
     CombineFn<Integer, ?, Double> mean = new MeanInts();
-    PCollection<KV<String, Double>> coldMean = input.apply("ColdMean",
-        Combine.<String, Integer, Double>perKey(mean).withHotKeyFanout(0));
-    PCollection<KV<String, Double>> warmMean = input.apply("WarmMean",
-        Combine.<String, Integer, Double>perKey(mean).withHotKeyFanout(hotKeyFanout));
-    PCollection<KV<String, Double>> hotMean = input.apply("HotMean",
-        Combine.<String, Integer, Double>perKey(mean).withHotKeyFanout(5));
-    PCollection<KV<String, Double>> splitMean = input.apply("SplitMean",
-        Combine.<String, Integer, Double>perKey(mean).withHotKeyFanout(splitHotKeyFanout));
+    PCollection<KV<String, Double>> coldMean =
+        input.apply("ColdMean", Combine.<String, Integer, Double>perKey(mean).withHotKeyFanout(0));
+    PCollection<KV<String, Double>> warmMean =
+        input.apply(
+            "WarmMean",
+            Combine.<String, Integer, Double>perKey(mean).withHotKeyFanout(hotKeyFanout));
+    PCollection<KV<String, Double>> hotMean =
+        input.apply("HotMean", Combine.<String, Integer, Double>perKey(mean).withHotKeyFanout(5));
+    PCollection<KV<String, Double>> splitMean =
+        input.apply(
+            "SplitMean",
+            Combine.<String, Integer, Double>perKey(mean).withHotKeyFanout(splitHotKeyFanout));
 
-    List<KV<String, Double>> expected = Arrays.asList(KV.of("a", 2.0), KV.of("b", 7.0));
+    List<TenantAwareValue<KV<String, Double>>> expected =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 2.0)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 7.0)));
     PAssert.that(coldMean).containsInAnyOrder(expected);
     PAssert.that(warmMean).containsInAnyOrder(expected);
     PAssert.that(hotMean).containsInAnyOrder(expected);
@@ -620,20 +784,29 @@ public class CombineTest implements Serializable {
   @Test
   @Category(ValidatesRunner.class)
   public void testHotKeyCombiningWithAccumulationMode() {
-    PCollection<Integer> input = pipeline.apply(Create.of(1, 2, 3, 4, 5));
+    PCollection<Integer> input =
+        pipeline.apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5)));
 
-    PCollection<Integer> output = input
-        .apply(Window.<Integer>into(new GlobalWindows())
-            .triggering(Repeatedly.forever(AfterPane.elementCountAtLeast(1)))
-            .accumulatingFiredPanes()
-            .withAllowedLateness(new Duration(0), ClosingBehavior.FIRE_ALWAYS))
-        .apply(Sum.integersGlobally().withoutDefaults().withFanout(2))
-        .apply(ParDo.of(new GetLast()));
+    PCollection<Integer> output =
+        input
+            .apply(
+                Window.<Integer>into(new GlobalWindows())
+                    .triggering(Repeatedly.forever(AfterPane.elementCountAtLeast(1)))
+                    .accumulatingFiredPanes()
+                    .withAllowedLateness(new Duration(0), ClosingBehavior.FIRE_ALWAYS))
+            .apply(Sum.integersGlobally().withoutDefaults().withFanout(2))
+            .apply(ParDo.of(new GetLast()));
 
     PAssert.that(output)
         .satisfies(
             input1 -> {
-              assertThat(input1, hasItem(15));
+              assertThat(input1.getValue(), hasItem(15));
               return null;
             });
 
@@ -643,19 +816,26 @@ public class CombineTest implements Serializable {
   @Test
   @Category(NeedsRunner.class)
   public void testBinaryCombineFn() {
-    PCollection<KV<String, Integer>> input = copy(createInput(pipeline, Arrays.asList(
-      KV.of("a", 1),
-      KV.of("a", 1),
-      KV.of("a", 4),
-      KV.of("b", 1),
-      KV.of("b", 13)
-    )), 2);
+    PCollection<KV<String, Integer>> input =
+        copy(
+            createInput(
+                pipeline,
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 1)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 4)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 1)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 13)))),
+            2);
     PCollection<KV<String, Integer>> intProduct =
         input.apply("IntProduct", Combine.perKey(new TestProdInt()));
     PCollection<KV<String, Integer>> objProduct =
         input.apply("ObjProduct", Combine.perKey(new TestProdObj()));
 
-    List<KV<String, Integer>> expected = Arrays.asList(KV.of("a", 16), KV.of("b", 169));
+    List<TenantAwareValue<KV<String, Integer>>> expected =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 16)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 169)));
     PAssert.that(intProduct).containsInAnyOrder(expected);
     PAssert.that(objProduct).containsInAnyOrder(expected);
 
@@ -664,17 +844,48 @@ public class CombineTest implements Serializable {
 
   @Test
   public void testBinaryCombineFnWithNulls() {
-    testCombineFn(new NullCombiner(), Arrays.asList(3, 3, 5), 45);
-    testCombineFn(new NullCombiner(), Arrays.asList(null, 3, 5), 30);
-    testCombineFn(new NullCombiner(), Arrays.asList(3, 3, null), 18);
-    testCombineFn(new NullCombiner(), Arrays.asList(null, 3, null), 12);
-    testCombineFn(new NullCombiner(), Arrays.asList(null, null, null), 8);
+    testCombineFn(
+        new NullCombiner(),
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5)),
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 45));
+    testCombineFn(
+        new NullCombiner(),
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Integer) null),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5)),
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 30));
+    testCombineFn(
+        new NullCombiner(),
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Integer) null)),
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 18));
+    testCombineFn(
+        new NullCombiner(),
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Integer) null),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Integer) null)),
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 12));
+    testCombineFn(
+        new NullCombiner(),
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Integer) null),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Integer) null),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Integer) null)),
+        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 8));
   }
 
   private static final class TestProdInt extends Combine.BinaryCombineIntegerFn {
     @Override
-    public int apply(int left, int right) {
-      return left * right;
+    public TenantAwareValue<Integer> apply(
+        TenantAwareValue<Integer> left, TenantAwareValue<Integer> right) {
+      return TenantAwareValue.of(right.getTenantId(), left.getValue() * right.getValue());
     }
 
     @Override
@@ -684,39 +895,48 @@ public class CombineTest implements Serializable {
   }
 
   private static final class TestProdObj extends Combine.BinaryCombineFn<Integer> {
-    @Override
-    public Integer apply(Integer left, Integer right) {
-      return left * right;
+    public TenantAwareValue<Integer> apply(
+        TenantAwareValue<Integer> left, TenantAwareValue<Integer> right) {
+      return TenantAwareValue.of(right.getTenantId(), left.getValue() * right.getValue());
     }
   }
 
-  /**
-   * Computes the product, considering null values to be 2.
-   */
+  /** Computes the product, considering null values to be 2. */
   private static final class NullCombiner extends Combine.BinaryCombineFn<Integer> {
     @Override
-    public Integer apply(Integer left, Integer right) {
-      return (left == null ? 2 : left) * (right == null ? 2 : right);
+    public TenantAwareValue<Integer> apply(
+        TenantAwareValue<Integer> left, TenantAwareValue<Integer> right) {
+      return TenantAwareValue.of(
+          right.getTenantId(),
+          (left == null ? 2 : left.getValue()) * (right == null ? 2 : right.getValue()));
     }
   }
 
   @Test
   @Category(ValidatesRunner.class)
   public void testCombineGloballyAsSingletonView() {
-    final PCollectionView<Integer> view = pipeline
-        .apply("CreateEmptySideInput", Create.empty(BigEndianIntegerCoder.of()))
-        .apply(Sum.integersGlobally().asSingletonView());
+    final PCollectionView<Integer> view =
+        pipeline
+            .apply("CreateEmptySideInput", Create.empty(BigEndianIntegerCoder.of()))
+            .apply(Sum.integersGlobally().asSingletonView());
 
-    PCollection<Integer> output = pipeline
-        .apply("CreateVoidMainInput", Create.of((Void) null))
-        .apply("OutputSideInput", ParDo.of(new DoFn<Void, Integer>() {
-                  @ProcessElement
-                  public void processElement(ProcessContext c) {
-                    c.output(c.sideInput(view));
-                  }
-                }).withSideInputs(view));
+    PCollection<Integer> output =
+        pipeline
+            .apply(
+                "CreateVoidMainInput",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Void) null)))
+            .apply(
+                "OutputSideInput",
+                ParDo.of(
+                        new DoFn<Void, Integer>() {
+                          @ProcessElement
+                          public void processElement(ProcessContext c) {
+                            c.output(c.sideInput(view));
+                          }
+                        })
+                    .withSideInputs(view));
 
-    PAssert.thatSingleton(output).isEqualTo(0);
+    PAssert.thatSingleton(output).isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0));
     pipeline.run();
   }
 
@@ -729,8 +949,10 @@ public class CombineTest implements Serializable {
             .apply(
                 "CreateSideInput",
                 Create.timestamped(
-                    TimestampedValue.of(1, new Instant(100)),
-                    TimestampedValue.of(3, new Instant(100))))
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of(1, new Instant(100))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of(3, new Instant(100)))))
             .apply("WindowSideInput", Window.into(windowFn))
             .apply("CombineSideInput", Sum.integersGlobally().asSingletonView());
 
@@ -740,7 +962,10 @@ public class CombineTest implements Serializable {
         pipeline
             .apply(
                 "CreateMainInput",
-                Create.timestamped(nonEmptyElement, emptyElement).withCoder(VoidCoder.of()))
+                Create.timestamped(
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, nonEmptyElement),
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, emptyElement))
+                    .withCoder(VoidCoder.of()))
             .apply("WindowMainInput", Window.into(windowFn))
             .apply(
                 "OutputSideInput",
@@ -753,13 +978,16 @@ public class CombineTest implements Serializable {
                         })
                     .withSideInputs(view));
 
-    PAssert.that(output).containsInAnyOrder(4, 0);
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0));
     PAssert.that(output)
         .inWindow(windowFn.assignWindow(nonEmptyElement.getTimestamp()))
-        .containsInAnyOrder(4);
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4));
     PAssert.that(output)
         .inWindow(windowFn.assignWindow(emptyElement.getTimestamp()))
-        .containsInAnyOrder(0);
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0));
     pipeline.run();
   }
 
@@ -777,14 +1005,14 @@ public class CombineTest implements Serializable {
 
   @Test
   public void testDisplayData() {
-    UniqueInts combineFn = new UniqueInts() {
-      @Override
-      public void populateDisplayData(DisplayData.Builder builder) {
-        builder.add(DisplayData.item("fnMetadata", "foobar"));
-      }
-    };
-    Combine.Globally<?, ?> combine = Combine.globally(combineFn)
-        .withFanout(1234);
+    UniqueInts combineFn =
+        new UniqueInts() {
+          @Override
+          public void populateDisplayData(DisplayData.Builder builder) {
+            builder.add(DisplayData.item("fnMetadata", "foobar"));
+          }
+        };
+    Combine.Globally<?, ?> combine = Combine.globally(combineFn).withFanout(1234);
     DisplayData displayData = DisplayData.from(combine);
 
     assertThat(displayData, hasDisplayItem("combineFn", combineFn.getClass()));
@@ -795,12 +1023,13 @@ public class CombineTest implements Serializable {
 
   @Test
   public void testDisplayDataForWrappedFn() {
-    UniqueInts combineFn = new UniqueInts() {
-      @Override
-      public void populateDisplayData(DisplayData.Builder builder) {
-        builder.add(DisplayData.item("foo", "bar"));
-      }
-    };
+    UniqueInts combineFn =
+        new UniqueInts() {
+          @Override
+          public void populateDisplayData(DisplayData.Builder builder) {
+            builder.add(DisplayData.item("foo", "bar"));
+          }
+        };
     Combine.PerKey<?, ?, ?> combine = Combine.perKey(combineFn);
     DisplayData displayData = DisplayData.from(combine);
 
@@ -817,11 +1046,14 @@ public class CombineTest implements Serializable {
     PTransform<PCollection<KV<Integer, Integer>>, ? extends POutput> combine =
         Combine.perKey(combineFn);
 
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveTransforms(combine,
-        KvCoder.of(VarIntCoder.of(), VarIntCoder.of()));
+    Set<DisplayData> displayData =
+        evaluator.displayDataForPrimitiveTransforms(
+            combine, KvCoder.of(VarIntCoder.of(), VarIntCoder.of()));
 
-    assertThat("Combine.perKey should include the combineFn in its primitive transform",
-        displayData, hasItem(hasDisplayItem("combineFn", combineFn.getClass())));
+    assertThat(
+        "Combine.perKey should include the combineFn in its primitive transform",
+        displayData,
+        hasItem(hasDisplayItem("combineFn", combineFn.getClass())));
   }
 
   @Test
@@ -834,81 +1066,95 @@ public class CombineTest implements Serializable {
     PTransform<PCollection<KV<Integer, Integer>>, PCollection<KV<Integer, Set<Integer>>>> combine =
         Combine.<Integer, Integer, Set<Integer>>perKey(combineFn).withHotKeyFanout(hotKeyFanout);
 
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveTransforms(combine,
-        KvCoder.of(VarIntCoder.of(), VarIntCoder.of()));
+    Set<DisplayData> displayData =
+        evaluator.displayDataForPrimitiveTransforms(
+            combine, KvCoder.of(VarIntCoder.of(), VarIntCoder.of()));
 
-    assertThat("Combine.perKey.withHotKeyFanout should include the combineFn in its primitive "
-        + "transform", displayData, hasItem(hasDisplayItem("combineFn", combineFn.getClass())));
-    assertThat("Combine.perKey.withHotKeyFanout(int) should include the fanout in its primitive "
-        + "transform", displayData, hasItem(hasDisplayItem("fanout", hotKeyFanout)));
+    assertThat(
+        "Combine.perKey.withHotKeyFanout should include the combineFn in its primitive "
+            + "transform",
+        displayData,
+        hasItem(hasDisplayItem("combineFn", combineFn.getClass())));
+    assertThat(
+        "Combine.perKey.withHotKeyFanout(int) should include the fanout in its primitive "
+            + "transform",
+        displayData,
+        hasItem(hasDisplayItem("fanout", hotKeyFanout)));
   }
 
   ////////////////////////////////////////////////////////////////////////////
   // Test classes, for different kinds of combining fns.
 
   /** Example SerializableFunction combiner. */
-  public static class SumInts
-      implements SerializableFunction<Iterable<Integer>, Integer> {
+  public static class SumInts implements SerializableFunction<Iterable<Integer>, Integer> {
     @Override
-    public Integer apply(Iterable<Integer> input) {
+    public TenantAwareValue<Integer> apply(TenantAwareValue<Iterable<Integer>> input) {
       int sum = 0;
-      for (int item : input) {
+      String tenantId = TenantAwareValue.NULL_TENANT;
+      for (int item : input.getValue()) {
+        tenantId = input.getTenantId();
         sum += item;
       }
-      return sum;
+      return TenantAwareValue.of(tenantId, sum);
     }
   }
 
   /** Example CombineFn. */
-  public static class UniqueInts extends
-      Combine.CombineFn<Integer, Set<Integer>, Set<Integer>> {
+  public static class UniqueInts extends Combine.CombineFn<Integer, Set<Integer>, Set<Integer>> {
 
     @Override
-    public Set<Integer> createAccumulator() {
-      return new HashSet<>();
+    public TenantAwareValue<Set<Integer>> createAccumulator() {
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new HashSet<>());
     }
 
     @Override
-    public Set<Integer> addInput(Set<Integer> accumulator, Integer input) {
-      accumulator.add(input);
-      return accumulator;
+    public TenantAwareValue<Set<Integer>> addInput(
+        TenantAwareValue<Set<Integer>> accumulator, TenantAwareValue<Integer> input) {
+      accumulator.getValue().add(input.getValue());
+
+      return TenantAwareValue.of(input.getTenantId(), accumulator.getValue());
     }
 
     @Override
-    public Set<Integer> mergeAccumulators(Iterable<Set<Integer>> accumulators) {
+    public TenantAwareValue<Set<Integer>> mergeAccumulators(
+        Iterable<TenantAwareValue<Set<Integer>>> accumulators) {
       Set<Integer> all = new HashSet<>();
-      for (Set<Integer> part : accumulators) {
-        all.addAll(part);
+      String tenantId = TenantAwareValue.NULL_TENANT;
+      for (TenantAwareValue<Set<Integer>> part : accumulators) {
+        all.addAll(part.getValue());
+        tenantId = part.getTenantId();
       }
-      return all;
+      return TenantAwareValue.of(tenantId, all);
     }
 
     @Override
-    public Set<Integer> extractOutput(Set<Integer> accumulator) {
+    public TenantAwareValue<Set<Integer>> extractOutput(
+        TenantAwareValue<Set<Integer>> accumulator) {
       return accumulator;
     }
   }
 
   /** Example AccumulatingCombineFn. */
-  private static class MeanInts extends
-      Combine.AccumulatingCombineFn<Integer, MeanInts.CountSum, Double> {
+  private static class MeanInts
+      extends Combine.AccumulatingCombineFn<Integer, MeanInts.CountSum, Double> {
     private static final Coder<Long> LONG_CODER = BigEndianLongCoder.of();
     private static final Coder<Double> DOUBLE_CODER = DoubleCoder.of();
 
-    class CountSum implements
-        Combine.AccumulatingCombineFn.Accumulator<Integer, CountSum, Double> {
+    class CountSum implements Combine.AccumulatingCombineFn.Accumulator<Integer, CountSum, Double> {
       long count = 0;
       double sum = 0.0;
+      String tenantId;
 
       CountSum(long count, double sum) {
         this.count = count;
         this.sum = sum;
+        this.tenantId = TenantAwareValue.NULL_TENANT;
       }
 
       @Override
-      public void addInput(Integer element) {
+      public void addInput(TenantAwareValue<Integer> element) {
         count++;
-        sum += element.doubleValue();
+        sum += element.getValue().doubleValue();
       }
 
       @Override
@@ -918,8 +1164,8 @@ public class CombineTest implements Serializable {
       }
 
       @Override
-      public Double extractOutput() {
-        return count == 0 ? 0.0 : sum / count;
+      public TenantAwareValue<Double> extractOutput() {
+        return TenantAwareValue.of(tenantId, count == 0 ? 0.0 : sum / count);
       }
 
       @Override
@@ -936,33 +1182,27 @@ public class CombineTest implements Serializable {
           return false;
         }
         CountSum other = (CountSum) obj;
-        return this.count == other.count
-            && (Math.abs(this.sum - other.sum) < 0.1);
+        return this.count == other.count && (Math.abs(this.sum - other.sum) < 0.1);
       }
 
       @Override
       public String toString() {
-        return MoreObjects.toStringHelper(this)
-            .add("count", count)
-            .add("sum", sum)
-            .toString();
+        return MoreObjects.toStringHelper(this).add("count", count).add("sum", sum).toString();
       }
     }
 
     @Override
-    public CountSum createAccumulator() {
-      return new CountSum(0, 0.0);
+    public TenantAwareValue<CountSum> createAccumulator() {
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new CountSum(0, 0.0));
     }
 
     @Override
-    public Coder<CountSum> getAccumulatorCoder(
+    public TenantAwareValueCoder<CountSum> getAccumulatorCoder(
         CoderRegistry registry, Coder<Integer> inputCoder) {
-      return new CountSumCoder();
+      return TenantAwareValueCoder.of(new CountSumCoder());
     }
 
-    /**
-     * A {@link Coder} for {@link CountSum}.
-     */
+    /** A {@link Coder} for {@link CountSum}. */
     private class CountSumCoder extends AtomicCoder<CountSum> {
       @Override
       public void encode(CountSum value, OutputStream outStream) throws IOException {
@@ -978,17 +1218,15 @@ public class CombineTest implements Serializable {
       }
 
       @Override
-      public void verifyDeterministic() throws NonDeterministicException { }
+      public void verifyDeterministic() throws NonDeterministicException {}
 
       @Override
-      public boolean isRegisterByteSizeObserverCheap(
-          CountSum value) {
+      public boolean isRegisterByteSizeObserverCheap(CountSum value) {
         return true;
       }
 
       @Override
-      public void registerByteSizeObserver(
-          CountSum value, ElementByteSizeObserver observer)
+      public void registerByteSizeObserver(CountSum value, ElementByteSizeObserver observer)
           throws Exception {
         LONG_CODER.registerByteSizeObserver(value.count, observer);
         DOUBLE_CODER.registerByteSizeObserver(value.sum, observer);
@@ -1006,6 +1244,7 @@ public class CombineTest implements Serializable {
     static class Accumulator {
       final String seed;
       String value;
+
       public Accumulator(String seed, String value) {
         this.seed = seed;
         this.value = value;
@@ -1030,50 +1269,59 @@ public class CombineTest implements Serializable {
     }
 
     @Override
-    public Coder<Accumulator> getAccumulatorCoder(
+    public TenantAwareValueCoder<Accumulator> getAccumulatorCoder(
         CoderRegistry registry, Coder<Integer> inputCoder) {
-      return Accumulator.getCoder();
+      return TenantAwareValueCoder.of(Accumulator.getCoder());
     }
 
     @Override
-    public Accumulator createAccumulator() {
-      return new Accumulator("", "");
+    public TenantAwareValue<Accumulator> createAccumulator() {
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new Accumulator("", ""));
     }
 
     @Override
-    public Accumulator addInput(Accumulator accumulator, Integer value) {
+    public TenantAwareValue<Accumulator> addInput(
+        TenantAwareValue<Accumulator> accumulator, TenantAwareValue<Integer> value) {
       try {
-        return new Accumulator(accumulator.seed, accumulator.value + String.valueOf(value));
+        return TenantAwareValue.of(
+            value.getTenantId(),
+            new Accumulator(
+                accumulator.getValue().seed,
+                accumulator.getValue().value + String.valueOf(value.getValue())));
       } finally {
-        accumulator.value = "cleared in addInput";
+        accumulator.getValue().value = "cleared in addInput";
       }
     }
 
     @Override
-    public Accumulator mergeAccumulators(Iterable<Accumulator> accumulators) {
+    public TenantAwareValue<Accumulator> mergeAccumulators(
+        Iterable<TenantAwareValue<Accumulator>> accumulators) {
       Accumulator seedAccumulator = null;
+      String tenatnId = TenantAwareValue.NULL_TENANT;
       StringBuilder all = new StringBuilder();
-      for (Accumulator accumulator : accumulators) {
+      for (TenantAwareValue<Accumulator> accumulator : accumulators) {
         if (seedAccumulator == null) {
-          seedAccumulator = accumulator;
+          seedAccumulator = accumulator.getValue();
+          tenatnId = accumulator.getTenantId();
         } else {
           assertEquals(
               String.format(
                   "Different seed values in accumulator: %s vs. %s", seedAccumulator, accumulator),
               seedAccumulator.seed,
-              accumulator.seed);
+              accumulator.getValue().seed);
         }
-        all.append(accumulator.value);
-        accumulator.value = "cleared in mergeAccumulators";
+        all.append(accumulator.getValue().value);
+        accumulator.getValue().value = "cleared in mergeAccumulators";
       }
-      return new Accumulator(checkNotNull(seedAccumulator).seed, all.toString());
+      return TenantAwareValue.of(
+          tenatnId, new Accumulator(checkNotNull(seedAccumulator).seed, all.toString()));
     }
 
     @Override
-    public String extractOutput(Accumulator accumulator) {
-      char[] chars = accumulator.value.toCharArray();
+    public TenantAwareValue<String> extractOutput(TenantAwareValue<Accumulator> accumulator) {
+      char[] chars = accumulator.getValue().value.toCharArray();
       Arrays.sort(chars);
-      return new String(chars);
+      return TenantAwareValue.of(accumulator.getTenantId(), new String(chars));
     }
   }
 
@@ -1089,71 +1337,85 @@ public class CombineTest implements Serializable {
     }
 
     @Override
-    public Coder<TestCombineFn.Accumulator> getAccumulatorCoder(
+    public TenantAwareValueCoder<Accumulator> getAccumulatorCoder(
         CoderRegistry registry, Coder<Integer> inputCoder) {
-      return TestCombineFn.Accumulator.getCoder();
+      return TenantAwareValueCoder.of(TestCombineFn.Accumulator.getCoder());
     }
 
     @Override
-    public TestCombineFn.Accumulator createAccumulator(Context c) {
+    public TenantAwareValue<TestCombineFn.Accumulator> createAccumulator(Context c) {
       Integer sideInputValue = c.sideInput(view);
-      return new TestCombineFn.Accumulator(sideInputValue.toString(), "");
+      return TenantAwareValue.of(
+          TenantAwareValue.NULL_TENANT,
+          new TestCombineFn.Accumulator(sideInputValue.toString(), ""));
     }
 
     @Override
-    public TestCombineFn.Accumulator addInput(
-        TestCombineFn.Accumulator accumulator, Integer value, Context c) {
+    public TenantAwareValue<TestCombineFn.Accumulator> addInput(
+        TenantAwareValue<TestCombineFn.Accumulator> accumulator,
+        TenantAwareValue<Integer> value,
+        Context c) {
       try {
         assertThat(
             "Not expecting view contents to change",
-            accumulator.seed,
+            accumulator.getValue().seed,
             Matchers.equalTo(Integer.toString(c.sideInput(view))));
-        return new TestCombineFn.Accumulator(
-            accumulator.seed, accumulator.value + String.valueOf(value));
+        return TenantAwareValue.of(
+            value.getTenantId(),
+            new TestCombineFn.Accumulator(
+                accumulator.getValue().seed,
+                accumulator.getValue().value + String.valueOf(value.getValue())));
       } finally {
-        accumulator.value = "cleared in addInput";
+        accumulator.getValue().value = "cleared in addInput";
       }
     }
 
     @Override
-    public TestCombineFn.Accumulator mergeAccumulators(
-        Iterable<TestCombineFn.Accumulator> accumulators, Context c) {
+    public TenantAwareValue<TestCombineFn.Accumulator> mergeAccumulators(
+        Iterable<TenantAwareValue<TestCombineFn.Accumulator>> accumulators, Context c) {
       String sideInputValue = c.sideInput(view).toString();
       StringBuilder all = new StringBuilder();
-      for (TestCombineFn.Accumulator accumulator : accumulators) {
+      String tenantId = TenantAwareValue.NULL_TENANT;
+
+      for (TenantAwareValue<TestCombineFn.Accumulator> accumulator : accumulators) {
         assertThat(
             "Accumulators should all have the same Side Input Value",
-            accumulator.seed,
+            createAccumulator(c).getValue().seed,
             Matchers.equalTo(sideInputValue));
-        all.append(accumulator.value);
-        accumulator.value = "cleared in mergeAccumulators";
+        all.append(accumulator.getValue().value);
+        tenantId = accumulator.getTenantId();
+
+        accumulator.getValue().value = "cleared in mergeAccumulators";
       }
-      return new TestCombineFn.Accumulator(sideInputValue, all.toString());
+      return TenantAwareValue.of(
+          tenantId, new TestCombineFn.Accumulator(sideInputValue, all.toString()));
     }
 
     @Override
-    public String extractOutput(TestCombineFn.Accumulator accumulator, Context c) {
-      assertThat(accumulator.seed, Matchers.startsWith(c.sideInput(view).toString()));
-      char[] chars = accumulator.value.toCharArray();
+    public TenantAwareValue<String> extractOutput(
+        TenantAwareValue<TestCombineFn.Accumulator> accumulator, Context c) {
+      assertThat(accumulator.getValue().seed, Matchers.startsWith(c.sideInput(view).toString()));
+      char[] chars = accumulator.getValue().value.toCharArray();
       Arrays.sort(chars);
-      return accumulator.seed + ":" + new String(chars);
+      return TenantAwareValue.of(
+          accumulator.getTenantId(), accumulator.getValue().seed + ":" + new String(chars));
     }
   }
 
   /** Another example AccumulatingCombineFn. */
-  public static class TestCounter extends
-      Combine.AccumulatingCombineFn<
-          Integer, TestCounter.Counter, Iterable<Long>> {
+  public static class TestCounter
+      extends Combine.AccumulatingCombineFn<Integer, TestCounter.Counter, Iterable<Long>> {
 
     /** An accumulator that observes its merges and outputs. */
-    public class Counter implements
-        Combine.AccumulatingCombineFn.Accumulator<Integer, Counter, Iterable<Long>>,
-        Serializable {
+    public class Counter
+        implements Combine.AccumulatingCombineFn.Accumulator<Integer, Counter, Iterable<Long>>,
+            Serializable {
 
       public long sum = 0;
       public long inputs = 0;
       public long merges = 0;
       public long outputs = 0;
+      String tenantId = TenantAwareValue.NULL_TENANT;
 
       public Counter(long sum, long inputs, long merges, long outputs) {
         this.sum = sum;
@@ -1163,12 +1425,13 @@ public class CombineTest implements Serializable {
       }
 
       @Override
-      public void addInput(Integer element) {
+      public void addInput(TenantAwareValue<Integer> element) {
         checkState(merges == 0);
         checkState(outputs == 0);
 
+        tenantId = element.getTenantId();
         inputs++;
-        sum += element;
+        sum += element.getValue();
       }
 
       @Override
@@ -1182,10 +1445,10 @@ public class CombineTest implements Serializable {
       }
 
       @Override
-      public Iterable<Long> extractOutput() {
+      public TenantAwareValue<Iterable<Long>> extractOutput() {
         checkState(outputs == 0);
 
-        return Arrays.asList(sum, inputs, merges, outputs);
+        return TenantAwareValue.of(tenantId, Arrays.asList(sum, inputs, merges, outputs));
       }
 
       @Override
@@ -1212,27 +1475,29 @@ public class CombineTest implements Serializable {
     }
 
     @Override
-    public Counter createAccumulator() {
-      return new Counter(0, 0, 0, 0);
+    public TenantAwareValue<Counter> createAccumulator() {
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new Counter(0, 0, 0, 0));
     }
 
     @Override
-    public Coder<Counter> getAccumulatorCoder(
+    public TenantAwareValueCoder<Counter> getAccumulatorCoder(
         CoderRegistry registry, Coder<Integer> inputCoder) {
       // This is a *very* inefficient encoding to send over the wire, but suffices
       // for tests.
-      return SerializableCoder.of(Counter.class);
+      return TenantAwareValueCoder.of(SerializableCoder.of(Counter.class));
     }
   }
 
   private static <T> PCollection<T> copy(PCollection<T> pc, final int n) {
-    return pc.apply(ParDo.of(new DoFn<T, T>() {
-      @ProcessElement
-      public void processElement(ProcessContext c) throws Exception {
-        for (int i = 0; i < n; i++) {
-          c.output(c.element());
-        }
-      }
-    }));
+    return pc.apply(
+        ParDo.of(
+            new DoFn<T, T>() {
+              @ProcessElement
+              public void processElement(ProcessContext c) throws Exception {
+                for (int i = 0; i < n; i++) {
+                  c.output(c.element());
+                }
+              }
+            }));
   }
 }

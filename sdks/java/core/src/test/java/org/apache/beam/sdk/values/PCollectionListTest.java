@@ -39,9 +39,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for PCollectionLists.
- */
+/** Tests for PCollectionLists. */
 @RunWith(JUnit4.class)
 public class PCollectionListTest {
   @Test
@@ -54,17 +52,28 @@ public class PCollectionListTest {
           exn.toString(),
           containsString(
               "must either have a non-empty list of PCollections, "
-              + "or must first call empty(Pipeline)"));
+                  + "or must first call empty(Pipeline)"));
     }
   }
 
   @Test
   public void testIterationOrder() {
     Pipeline p = TestPipeline.create();
-    PCollection<Long> createOne = p.apply("CreateOne", Create.of(1L, 2L, 3L));
+    PCollection<Long> createOne =
+        p.apply(
+            "CreateOne",
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L)));
     PCollection<Long> boundedCount = p.apply("CountBounded", GenerateSequence.from(0).to(23));
     PCollection<Long> unboundedCount = p.apply("CountUnbounded", GenerateSequence.from(0));
-    PCollection<Long> createTwo = p.apply("CreateTwo", Create.of(-1L, -2L));
+    PCollection<Long> createTwo =
+        p.apply(
+            "CreateTwo",
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -1L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -2L)));
     PCollection<Long> maxReadTimeCount =
         p.apply(
             "CountLimited", GenerateSequence.from(0).withMaxReadTime(Duration.standardSeconds(5)));
@@ -74,9 +83,7 @@ public class PCollectionListTest {
     // Build a PCollectionList from a list. This should have the same order as the input list.
     PCollectionList<Long> pcList = PCollectionList.of(counts);
     // Contains is the order-dependent matcher
-    assertThat(
-        pcList.getAll(),
-        contains(boundedCount, maxReadTimeCount, unboundedCount));
+    assertThat(pcList.getAll(), contains(boundedCount, maxReadTimeCount, unboundedCount));
 
     // A list that is expanded with builder methods has the added value at the end
     PCollectionList<Long> withOneCreate = pcList.and(createTwo);
@@ -106,7 +113,13 @@ public class PCollectionListTest {
   @Test
   public void testExpandWithDuplicates() {
     Pipeline p = TestPipeline.create();
-    PCollection<Long> createOne = p.apply("CreateOne", Create.of(1L, 2L, 3L));
+    PCollection<Long> createOne =
+        p.apply(
+            "CreateOne",
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2L),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3L)));
 
     PCollectionList<Long> list = PCollectionList.of(createOne).and(createOne).and(createOne);
     assertThat(
@@ -116,20 +129,35 @@ public class PCollectionListTest {
   @Test
   public void testEquals() {
     Pipeline p = TestPipeline.create();
-    PCollection<String> first = p.apply("Meta", Create.of("foo", "bar"));
-    PCollection<String> second = p.apply("Pythonic", Create.of("spam, ham"));
-    PCollection<String> third = p.apply("Syntactic", Create.of("eggs", "baz"));
+    PCollection<String> first =
+        p.apply(
+            "Meta",
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "foo"),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "bar")));
+    PCollection<String> second =
+        p.apply(
+            "Pythonic",
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "spam"),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "ham")));
+    PCollection<String> third =
+        p.apply(
+            "Syntactic",
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "eggs"),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "baz")));
 
     EqualsTester tester = new EqualsTester();
-//    tester.addEqualityGroup(PCollectionList.empty(p), PCollectionList.empty(p));
-//    tester.addEqualityGroup(PCollectionList.of(first).and(second));
+    //    tester.addEqualityGroup(PCollectionList.empty(p), PCollectionList.empty(p));
+    //    tester.addEqualityGroup(PCollectionList.of(first).and(second));
     // Constructors should all produce equivalent
     tester.addEqualityGroup(
         PCollectionList.of(first).and(second).and(third),
         PCollectionList.of(first).and(second).and(third),
-//        PCollectionList.<String>empty(p).and(first).and(second).and(third),
-//        PCollectionList.of(ImmutableList.of(first, second, third)),
-//        PCollectionList.of(first).and(ImmutableList.of(second, third)),
+        //        PCollectionList.<String>empty(p).and(first).and(second).and(third),
+        //        PCollectionList.of(ImmutableList.of(first, second, third)),
+        //        PCollectionList.of(first).and(ImmutableList.of(second, third)),
         PCollectionList.of(ImmutableList.of(first, second)).and(third));
     // Order is considered
     tester.addEqualityGroup(PCollectionList.of(first).and(third).and(second));

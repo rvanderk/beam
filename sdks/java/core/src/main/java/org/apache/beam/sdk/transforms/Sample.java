@@ -29,20 +29,22 @@ import org.apache.beam.sdk.coders.CoderRegistry;
 import org.apache.beam.sdk.coders.IterableCoder;
 import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.transforms.Combine.CombineFn;
+import org.apache.beam.sdk.transforms.Top.BoundedHeap;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
+import org.apache.beam.sdk.values.TenantAwareValue.TenantAwareValueCoder;
 
 /**
- * {@code PTransform}s for taking samples of the elements in a
- * {@code PCollection}, or samples of the values associated with each
- * key in a {@code PCollection} of {@code KV}s.
+ * {@code PTransform}s for taking samples of the elements in a {@code PCollection}, or samples of
+ * the values associated with each key in a {@code PCollection} of {@code KV}s.
  *
- * {@link #fixedSizeGlobally(int)} and {@link #fixedSizePerKey(int)} compute uniformly random
+ * <p>{@link #fixedSizeGlobally(int)} and {@link #fixedSizePerKey(int)} compute uniformly random
  * samples. {@link #any(long)} is faster, but provides no uniformity guarantees.
  *
- * <p>{@link #combineFn} can also be used manually, in combination with state and with the
- * {@link Combine} transform.
+ * <p>{@link #combineFn} can also be used manually, in combination with state and with the {@link
+ * Combine} transform.
  */
 public class Sample {
 
@@ -60,21 +62,20 @@ public class Sample {
   }
 
   /**
-   * {@code Sample#any(long)} takes a {@code PCollection<T>} and a limit, and
-   * produces a new {@code PCollection<T>} containing up to limit
-   * elements of the input {@code PCollection}.
+   * {@code Sample#any(long)} takes a {@code PCollection<T>} and a limit, and produces a new {@code
+   * PCollection<T>} containing up to limit elements of the input {@code PCollection}.
    *
-   * <p>If limit is greater than or equal to the size of the input
-   * {@code PCollection}, then all the input's elements will be selected.
+   * <p>If limit is greater than or equal to the size of the input {@code PCollection}, then all the
+   * input's elements will be selected.
    *
    * <p>Example of use:
-   * <pre> {@code
+   *
+   * <pre>{@code
    * PCollection<String> input = ...;
    * PCollection<String> output = input.apply(Sample.<String>any(100));
-   * } </pre>
+   * }</pre>
    *
-   * @param <T> the type of the elements of the input and output
-   * {@code PCollection}s
+   * @param <T> the type of the elements of the input and output {@code PCollection}s
    * @param limit the number of elements to take from the input
    */
   public static <T> PTransform<PCollection<T>, PCollection<T>> any(long limit) {
@@ -87,9 +88,8 @@ public class Sample {
    * selected elements. If the input {@code PCollection} has fewer than {@code sampleSize} elements,
    * then the output {@code Iterable<T>} will be all the input's elements.
    *
-   * <p>All of the elements of the output {@code PCollection} should fit into
-   * main memory of a single worker machine.  This operation does not
-   * run in parallel.
+   * <p>All of the elements of the output {@code PCollection} should fit into main memory of a
+   * single worker machine. This operation does not run in parallel.
    *
    * <p>Example of use:
    *
@@ -97,8 +97,7 @@ public class Sample {
    * PCollection<String> pc = ...;
    * PCollection<Iterable<String>> sampleOfSize10 =
    *     pc.apply(Sample.fixedSizeGlobally(10));
-   * }
-   * </pre>
+   * }</pre>
    *
    * @param sampleSize the number of elements to select; must be {@code >= 0}
    * @param <T> the type of the elements
@@ -123,8 +122,7 @@ public class Sample {
    * PCollection<KV<String, Integer>> pc = ...;
    * PCollection<KV<String, Iterable<Integer>>> sampleOfSize10PerKey =
    *     pc.apply(Sample.<String, Integer>fixedSizePerKey());
-   * }
-   * </pre>
+   * }</pre>
    *
    * @param sampleSize the number of values to select for each distinct key; must be {@code >= 0}
    * @param <K> the type of the keys
@@ -136,7 +134,6 @@ public class Sample {
     return new FixedSizePerKey<>(sampleSize);
   }
 
-
   /////////////////////////////////////////////////////////////////////////////
 
   /** Implementation of {@link #any(long)}. */
@@ -144,9 +141,8 @@ public class Sample {
     private final long limit;
 
     /**
-     * Constructs a {@code SampleAny<T>} PTransform that, when applied,
-     * produces a new PCollection containing up to {@code limit}
-     * elements of its input {@code PCollection}.
+     * Constructs a {@code SampleAny<T>} PTransform that, when applied, produces a new PCollection
+     * containing up to {@code limit} elements of its input {@code PCollection}.
      */
     private Any(long limit) {
       checkArgument(limit >= 0, "Expected non-negative limit, received %s.", limit);
@@ -162,8 +158,7 @@ public class Sample {
     @Override
     public void populateDisplayData(DisplayData.Builder builder) {
       super.populateDisplayData(builder);
-      builder.add(DisplayData.item("sampleSize", limit)
-        .withLabel("Sample Size"));
+      builder.add(DisplayData.item("sampleSize", limit).withLabel("Sample Size"));
     }
   }
 
@@ -184,8 +179,7 @@ public class Sample {
     @Override
     public void populateDisplayData(DisplayData.Builder builder) {
       super.populateDisplayData(builder);
-      builder.add(DisplayData.item("sampleSize", sampleSize)
-          .withLabel("Sample Size"));
+      builder.add(DisplayData.item("sampleSize", sampleSize).withLabel("Sample Size"));
     }
   }
 
@@ -206,14 +200,11 @@ public class Sample {
     @Override
     public void populateDisplayData(DisplayData.Builder builder) {
       super.populateDisplayData(builder);
-      builder.add(DisplayData.item("sampleSize", sampleSize)
-          .withLabel("Sample Size"));
+      builder.add(DisplayData.item("sampleSize", sampleSize).withLabel("Sample Size"));
     }
   }
 
-  /**
-   * A {@link CombineFn} that combines into a {@link List} of up to limit elements.
-   */
+  /** A {@link CombineFn} that combines into a {@link List} of up to limit elements. */
   private static class SampleAnyCombineFn<T> extends CombineFn<T, List<T>, Iterable<T>> {
     private final long limit;
 
@@ -222,52 +213,54 @@ public class Sample {
     }
 
     @Override
-    public List<T> createAccumulator() {
-      return new ArrayList<>((int) limit);
+    public TenantAwareValue<List<T>> createAccumulator() {
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new ArrayList<>((int) limit));
     }
 
     @Override
-    public List<T> addInput(List<T> accumulator, T input) {
-      if (accumulator.size() < limit) {
-        accumulator.add(input);
+    public TenantAwareValue<List<T>> addInput(
+        TenantAwareValue<List<T>> accumulator, TenantAwareValue<T> input) {
+      if (accumulator.getValue().size() < limit) {
+        accumulator.getValue().add(input.getValue());
       }
-      return accumulator;
+      return TenantAwareValue.of(input.getTenantId(), accumulator.getValue());
     }
 
     @Override
-    public List<T> mergeAccumulators(Iterable<List<T>> accumulators) {
-      Iterator<List<T>> iter = accumulators.iterator();
+    public TenantAwareValue<List<T>> mergeAccumulators(
+        Iterable<TenantAwareValue<List<T>>> accumulators) {
+      Iterator<TenantAwareValue<List<T>>> iter = accumulators.iterator();
       if (!iter.hasNext()) {
         return createAccumulator();
       }
-      List<T> res = iter.next();
+      TenantAwareValue<List<T>> res = iter.next();
       while (iter.hasNext()) {
-        for (T t : iter.next()) {
-          if (res.size() >= limit) {
+        for (T t : iter.next().getValue()) {
+          if (res.getValue().size() >= limit) {
             return res;
           }
-          res.add(t);
+          res.getValue().add(t);
         }
       }
       return res;
     }
 
     @Override
-    public Iterable<T> extractOutput(List<T> accumulator) {
-      return accumulator;
+    public TenantAwareValue<Iterable<T>> extractOutput(TenantAwareValue<List<T>> accumulator) {
+      TenantAwareValue<Iterable<T>> tV =
+          TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue());
+      return tV;
     }
   }
 
   /**
-   * {@code CombineFn} that computes a fixed-size sample of a
-   * collection of values.
+   * {@code CombineFn} that computes a fixed-size sample of a collection of values.
    *
    * @param <T> the type of the elements
    */
   public static class FixedSizedSampleFn<T>
-      extends CombineFn<T,
-          Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>,
-          Iterable<T>> {
+      extends CombineFn<
+          T, Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>, Iterable<T>> {
     private final int sampleSize;
     private final Top.TopCombineFn<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>
         topCombineFn;
@@ -283,55 +276,63 @@ public class Sample {
     }
 
     @Override
-    public Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>
+    public TenantAwareValue<Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>
         createAccumulator() {
       return topCombineFn.createAccumulator();
     }
 
     @Override
-    public Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>> addInput(
-        Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>> accumulator,
-        T input) {
-      accumulator.addInput(KV.of(rand.nextInt(), input));
-      return accumulator;
+    public TenantAwareValue<Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>
+        addInput(
+            TenantAwareValue<
+                    Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>
+                accumulator,
+            TenantAwareValue<T> input) {
+      accumulator
+          .getValue()
+          .addInput(
+              TenantAwareValue.of(input.getTenantId(), KV.of(rand.nextInt(), input.getValue())));
+      return TenantAwareValue.of(input.getTenantId(), accumulator.getValue());
     }
 
     @Override
-    public Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>
+    public TenantAwareValue<Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>
         mergeAccumulators(
-            Iterable<Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>
-            accumulators) {
+            Iterable<
+                    TenantAwareValue<
+                        Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>>
+                accumulators) {
       return topCombineFn.mergeAccumulators(accumulators);
     }
 
     @Override
-    public Iterable<T> extractOutput(
-        Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>> accumulator) {
+    public TenantAwareValue<Iterable<T>> extractOutput(
+        TenantAwareValue<Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>
+            accumulator) {
       List<T> out = new ArrayList<>();
-      for (KV<Integer, T> element : accumulator.extractOutput()) {
+      for (KV<Integer, T> element : accumulator.getValue().extractOutput().getValue()) {
         out.add(element.getValue());
       }
-      return out;
+      return TenantAwareValue.of(accumulator.getTenantId(), out);
     }
 
     @Override
-    public Coder<Top.BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>
+    public TenantAwareValueCoder<
+            BoundedHeap<KV<Integer, T>, SerializableComparator<KV<Integer, T>>>>
         getAccumulatorCoder(CoderRegistry registry, Coder<T> inputCoder) {
       return topCombineFn.getAccumulatorCoder(
           registry, KvCoder.of(BigEndianIntegerCoder.of(), inputCoder));
     }
 
     @Override
-    public Coder<Iterable<T>> getDefaultOutputCoder(
-        CoderRegistry registry, Coder<T> inputCoder) {
+    public Coder<Iterable<T>> getDefaultOutputCoder(CoderRegistry registry, Coder<T> inputCoder) {
       return IterableCoder.of(inputCoder);
     }
 
     @Override
     public void populateDisplayData(DisplayData.Builder builder) {
       super.populateDisplayData(builder);
-      builder.add(DisplayData.item("sampleSize", sampleSize)
-        .withLabel("Sample Size"));
+      builder.add(DisplayData.item("sampleSize", sampleSize).withLabel("Sample Size"));
     }
   }
 }

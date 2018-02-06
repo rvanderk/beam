@@ -44,20 +44,20 @@ import org.apache.beam.sdk.transforms.CombineWithContext.Context;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.transforms.display.HasDisplayData;
 import org.apache.beam.sdk.util.CombineFnUtil;
+import org.apache.beam.sdk.values.TenantAwareValue;
+import org.apache.beam.sdk.values.TenantAwareValue.TenantAwareValueCoder;
 import org.apache.beam.sdk.values.TupleTag;
 
-/**
- * Static utility methods that create combine function instances.
- */
+/** Static utility methods that create combine function instances. */
 public class CombineFns {
 
   /**
-   * Returns a {@link ComposeCombineFnBuilder} to construct a composed
-   * {@link GlobalCombineFn}.
+   * Returns a {@link ComposeCombineFnBuilder} to construct a composed {@link GlobalCombineFn}.
    *
    * <p>The same {@link TupleTag} cannot be used in a composition multiple times.
    *
    * <p>Example:
+   *
    * <pre>{@code
    * PCollection<Integer> globalLatencies = ...;
    *
@@ -96,35 +96,30 @@ public class CombineFns {
 
   /////////////////////////////////////////////////////////////////////////////
 
-  /**
-   * A builder class to construct a composed {@link GlobalCombineFn}.
-   */
+  /** A builder class to construct a composed {@link GlobalCombineFn}. */
   public static class ComposeCombineFnBuilder {
     /**
-     * Returns a {@link ComposedCombineFn} that can take additional
-     * {@link GlobalCombineFn GlobalCombineFns} and apply them as a single combine function.
+     * Returns a {@link ComposedCombineFn} that can take additional {@link GlobalCombineFn
+     * GlobalCombineFns} and apply them as a single combine function.
      *
-     * <p>The {@link ComposedCombineFn} extracts inputs from {@code DataT} with
-     * the {@code extractInputFn} and combines them with the {@code combineFn},
-     * and then it outputs each combined value with a {@link TupleTag} to a
-     * {@link CoCombineResult}.
+     * <p>The {@link ComposedCombineFn} extracts inputs from {@code DataT} with the {@code
+     * extractInputFn} and combines them with the {@code combineFn}, and then it outputs each
+     * combined value with a {@link TupleTag} to a {@link CoCombineResult}.
      */
     public <DataT, InputT, OutputT> ComposedCombineFn<DataT> with(
         SimpleFunction<DataT, InputT> extractInputFn,
         CombineFn<InputT, ?, OutputT> combineFn,
         TupleTag<OutputT> outputTag) {
-      return new ComposedCombineFn<DataT>()
-          .with(extractInputFn, combineFn, outputTag);
+      return new ComposedCombineFn<DataT>().with(extractInputFn, combineFn, outputTag);
     }
 
     /**
-     * Returns a {@link ComposedCombineFnWithContext} that can take additional
-     * {@link GlobalCombineFn GlobalCombineFns} and apply them as a single combine function.
+     * Returns a {@link ComposedCombineFnWithContext} that can take additional {@link
+     * GlobalCombineFn GlobalCombineFns} and apply them as a single combine function.
      *
-     * <p>The {@link ComposedCombineFnWithContext} extracts inputs from {@code DataT} with
-     * the {@code extractInputFn} and combines them with the {@code combineFnWithContext},
-     * and then it outputs each combined value with a {@link TupleTag} to a
-     * {@link CoCombineResult}.
+     * <p>The {@link ComposedCombineFnWithContext} extracts inputs from {@code DataT} with the
+     * {@code extractInputFn} and combines them with the {@code combineFnWithContext}, and then it
+     * outputs each combined value with a {@link TupleTag} to a {@link CoCombineResult}.
      */
     public <DataT, InputT, OutputT> ComposedCombineFnWithContext<DataT> with(
         SimpleFunction<DataT, InputT> extractInputFn,
@@ -153,9 +148,8 @@ public class CombineFns {
     /**
      * The constructor of {@link CoCombineResult}.
      *
-     * <p>Null values should have been filtered out from the {@code valuesMap}.
-     * {@link TupleTag TupleTags} that associate with null values doesn't exist in the key set of
-     * {@code valuesMap}.
+     * <p>Null values should have been filtered out from the {@code valuesMap}. {@link TupleTag
+     * TupleTags} that associate with null values doesn't exist in the key set of {@code valuesMap}.
      *
      * @throws NullPointerException if any key or value in {@code valuesMap} is null
      */
@@ -195,10 +189,9 @@ public class CombineFns {
   /**
    * A composed {@link CombineFn} that applies multiple {@link CombineFn CombineFns}.
    *
-   * <p>For each {@link CombineFn} it extracts inputs from {@code DataT} with
-   * the {@code extractInputFn} and combines them,
-   * and then it outputs each combined value with a {@link TupleTag} to a
-   * {@link CoCombineResult}.
+   * <p>For each {@link CombineFn} it extracts inputs from {@code DataT} with the {@code
+   * extractInputFn} and combines them, and then it outputs each combined value with a {@link
+   * TupleTag} to a {@link CoCombineResult}.
    */
   public static class ComposedCombineFn<DataT> extends CombineFn<DataT, Object[], CoCombineResult> {
 
@@ -230,9 +223,7 @@ public class CombineFns {
       this.combineFnCount = this.combineFns.size();
     }
 
-    /**
-     * Returns a {@link ComposedCombineFn} with an additional {@link CombineFn}.
-     */
+    /** Returns a {@link ComposedCombineFn} with an additional {@link CombineFn}. */
     public <InputT, OutputT> ComposedCombineFn<DataT> with(
         SimpleFunction<DataT, InputT> extractInputFn,
         CombineFn<InputT, ?, OutputT> combineFn,
@@ -243,19 +234,13 @@ public class CombineFns {
               .addAll(extractInputFns)
               .add(extractInputFn)
               .build(),
-          ImmutableList.<CombineFn<?, ?, ?>>builder()
-              .addAll(combineFns)
-              .add(combineFn)
-              .build(),
-          ImmutableList.<TupleTag<?>>builder()
-              .addAll(outputTags)
-              .add(outputTag)
-              .build());
+          ImmutableList.<CombineFn<?, ?, ?>>builder().addAll(combineFns).add(combineFn).build(),
+          ImmutableList.<TupleTag<?>>builder().addAll(outputTags).add(outputTag).build());
     }
 
     /**
-     * Returns a {@link ComposedCombineFnWithContext} with an additional
-     * {@link CombineFnWithContext}.
+     * Returns a {@link ComposedCombineFnWithContext} with an additional {@link
+     * CombineFnWithContext}.
      */
     public <InputT, OutputT> ComposedCombineFnWithContext<DataT> with(
         SimpleFunction<DataT, InputT> extractInputFn,
@@ -275,76 +260,87 @@ public class CombineFns {
               .addAll(fnsWithContext)
               .add(combineFn)
               .build(),
-          ImmutableList.<TupleTag<?>>builder()
-              .addAll(outputTags)
-              .add(outputTag)
-              .build());
+          ImmutableList.<TupleTag<?>>builder().addAll(outputTags).add(outputTag).build());
     }
 
     @Override
-    public Object[] createAccumulator() {
+    public TenantAwareValue<Object[]> createAccumulator() {
       Object[] accumsArray = new Object[combineFnCount];
       for (int i = 0; i < combineFnCount; ++i) {
         accumsArray[i] = combineFns.get(i).createAccumulator();
       }
-      return accumsArray;
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, accumsArray);
     }
 
     @Override
-    public Object[] addInput(Object[] accumulator, DataT value) {
+    public TenantAwareValue<Object[]> addInput(
+        TenantAwareValue<Object[]> accumulator, TenantAwareValue<DataT> value) {
       for (int i = 0; i < combineFnCount; ++i) {
         Object input = extractInputFns.get(i).apply(value);
-        accumulator[i] = combineFns.get(i).addInput(accumulator[i], input);
+        // accumulator[i] = combineFns.get(i).addInput(accumulator[i], input);
+        accumulator.getValue()[i] =
+            combineFns
+                .get(i)
+                .addInput(
+                    TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue()[i]),
+                    TenantAwareValue.of(value.getTenantId(), input));
       }
-      return accumulator;
+      return TenantAwareValue.of(value.getTenantId(), accumulator.getValue());
     }
 
     @Override
-    public Object[] mergeAccumulators(Iterable<Object[]> accumulators) {
-      Iterator<Object[]> iter = accumulators.iterator();
+    public TenantAwareValue<Object[]> mergeAccumulators(
+        Iterable<TenantAwareValue<Object[]>> accumulators) {
+      Iterator<TenantAwareValue<Object[]>> iter = accumulators.iterator();
       if (!iter.hasNext()) {
         return createAccumulator();
       } else {
         // Reuses the first accumulator, and overwrites its values.
         // It is safe because {@code accum[i]} only depends on
         // the i-th component of each accumulator.
-        Object[] accum = iter.next();
+        TenantAwareValue<Object[]> accum = iter.next();
         for (int i = 0; i < combineFnCount; ++i) {
-          accum[i] = combineFns.get(i).mergeAccumulators(new ProjectionIterable(accumulators, i));
+          accum.getValue()[i] =
+              combineFns.get(i).mergeAccumulators(new ProjectionIterable(accumulators, i));
         }
         return accum;
       }
     }
 
     @Override
-    public CoCombineResult extractOutput(Object[] accumulator) {
+    public TenantAwareValue<CoCombineResult> extractOutput(TenantAwareValue<Object[]> accumulator) {
       Map<TupleTag<?>, Object> valuesMap = Maps.newHashMap();
       for (int i = 0; i < combineFnCount; ++i) {
         valuesMap.put(
             outputTags.get(i),
-            combineFns.get(i).extractOutput(accumulator[i]));
+            combineFns
+                .get(i)
+                .extractOutput(
+                    TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue()[i])));
       }
-      return new CoCombineResult(valuesMap);
+      return TenantAwareValue.of(accumulator.getTenantId(), new CoCombineResult(valuesMap));
     }
 
     @Override
-    public Object[] compact(Object[] accumulator) {
+    public TenantAwareValue<Object[]> compact(TenantAwareValue<Object[]> accumulator) {
       for (int i = 0; i < combineFnCount; ++i) {
-        accumulator[i] = combineFns.get(i).compact(accumulator[i]);
+        accumulator.getValue()[i] =
+            combineFns
+                .get(i)
+                .compact(TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue()[i]));
       }
       return accumulator;
     }
 
     @Override
-    public Coder<Object[]> getAccumulatorCoder(CoderRegistry registry, Coder<DataT> dataCoder)
-        throws CannotProvideCoderException {
+    public TenantAwareValueCoder<Object[]> getAccumulatorCoder(
+        CoderRegistry registry, Coder<DataT> dataCoder) throws CannotProvideCoderException {
       List<Coder<Object>> coders = Lists.newArrayList();
       for (int i = 0; i < combineFnCount; ++i) {
-        Coder<Object> inputCoder =
-            registry.getOutputCoder(extractInputFns.get(i), dataCoder);
-        coders.add(combineFns.get(i).getAccumulatorCoder(registry, inputCoder));
+        Coder<Object> inputCoder = registry.getOutputCoder(extractInputFns.get(i), dataCoder);
+        coders.add(combineFns.get(i).getAccumulatorCoder(registry, inputCoder).getValueCoder());
       }
-      return new ComposedAccumulatorCoder(coders);
+      return TenantAwareValueCoder.of(new ComposedAccumulatorCoder(coders));
     }
 
     @Override
@@ -355,13 +351,12 @@ public class CombineFns {
   }
 
   /**
-   * A composed {@link CombineFnWithContext} that applies multiple
-   * {@link CombineFnWithContext CombineFnWithContexts}.
+   * A composed {@link CombineFnWithContext} that applies multiple {@link CombineFnWithContext
+   * CombineFnWithContexts}.
    *
-   * <p>For each {@link CombineFnWithContext} it extracts inputs from {@code DataT} with
-   * the {@code extractInputFn} and combines them,
-   * and then it outputs each combined value with a {@link TupleTag} to a
-   * {@link CoCombineResult}.
+   * <p>For each {@link CombineFnWithContext} it extracts inputs from {@code DataT} with the {@code
+   * extractInputFn} and combines them, and then it outputs each combined value with a {@link
+   * TupleTag} to a {@link CoCombineResult}.
    */
   public static class ComposedCombineFnWithContext<DataT>
       extends CombineFnWithContext<DataT, Object[], CoCombineResult> {
@@ -383,8 +378,7 @@ public class CombineFns {
         ImmutableList<CombineFnWithContext<?, ?, ?>> combineFnWithContexts,
         ImmutableList<TupleTag<?>> outputTags) {
       @SuppressWarnings({"unchecked", "rawtypes"})
-      List<SerializableFunction<DataT, Object>> castedExtractInputFns =
-          (List) extractInputFns;
+      List<SerializableFunction<DataT, Object>> castedExtractInputFns = (List) extractInputFns;
       this.extractInputFns = castedExtractInputFns;
 
       @SuppressWarnings({"rawtypes", "unchecked"})
@@ -413,77 +407,92 @@ public class CombineFns {
               .addAll(combineFnWithContexts)
               .add(CombineFnUtil.toFnWithContext(globalCombineFn))
               .build(),
-          ImmutableList.<TupleTag<?>>builder()
-              .addAll(outputTags)
-              .add(outputTag)
-              .build());
+          ImmutableList.<TupleTag<?>>builder().addAll(outputTags).add(outputTag).build());
     }
 
     @Override
-    public Object[] createAccumulator(Context c) {
+    public TenantAwareValue<Object[]> createAccumulator(Context c) {
       Object[] accumsArray = new Object[combineFnCount];
       for (int i = 0; i < combineFnCount; ++i) {
         accumsArray[i] = combineFnWithContexts.get(i).createAccumulator(c);
       }
-      return accumsArray;
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, accumsArray);
     }
 
     @Override
-    public Object[] addInput(Object[] accumulator, DataT value, Context c) {
+    public TenantAwareValue<Object[]> addInput(
+        TenantAwareValue<Object[]> accumulator, TenantAwareValue<DataT> value, Context c) {
       for (int i = 0; i < combineFnCount; ++i) {
         Object input = extractInputFns.get(i).apply(value);
-        accumulator[i] = combineFnWithContexts.get(i).addInput(accumulator[i], input, c);
+        accumulator.getValue()[i] =
+            combineFnWithContexts
+                .get(i)
+                .addInput(
+                    TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue()[i]),
+                    TenantAwareValue.of(value.getTenantId(), input),
+                    c);
       }
       return accumulator;
     }
 
     @Override
-    public Object[] mergeAccumulators(Iterable<Object[]> accumulators, Context c) {
-      Iterator<Object[]> iter = accumulators.iterator();
+    public TenantAwareValue<Object[]> mergeAccumulators(
+        Iterable<TenantAwareValue<Object[]>> accumulators, Context c) {
+      Iterator<TenantAwareValue<Object[]>> iter = accumulators.iterator();
       if (!iter.hasNext()) {
         return createAccumulator(c);
       } else {
         // Reuses the first accumulator, and overwrites its values.
         // It is safe because {@code accum[i]} only depends on
         // the i-th component of each accumulator.
-        Object[] accum = iter.next();
+        TenantAwareValue<Object[]> accum = iter.next();
         for (int i = 0; i < combineFnCount; ++i) {
-          accum[i] = combineFnWithContexts.get(i).mergeAccumulators(
-              new ProjectionIterable(accumulators, i), c);
+          accum.getValue()[i] =
+              combineFnWithContexts
+                  .get(i)
+                  .mergeAccumulators(new ProjectionIterable(accumulators, i), c);
         }
         return accum;
       }
     }
 
     @Override
-    public CoCombineResult extractOutput(Object[] accumulator, Context c) {
+    public TenantAwareValue<CoCombineResult> extractOutput(
+        TenantAwareValue<Object[]> accumulator, Context c) {
       Map<TupleTag<?>, Object> valuesMap = Maps.newHashMap();
       for (int i = 0; i < combineFnCount; ++i) {
         valuesMap.put(
             outputTags.get(i),
-            combineFnWithContexts.get(i).extractOutput(accumulator[i], c));
+            combineFnWithContexts
+                .get(i)
+                .extractOutput(
+                    TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue()[i]), c));
       }
-      return new CoCombineResult(valuesMap);
+      return TenantAwareValue.of(accumulator.getTenantId(), new CoCombineResult(valuesMap));
     }
 
     @Override
-    public Object[] compact(Object[] accumulator, Context c) {
+    public TenantAwareValue<Object[]> compact(TenantAwareValue<Object[]> accumulator, Context c) {
       for (int i = 0; i < combineFnCount; ++i) {
-        accumulator[i] = combineFnWithContexts.get(i).compact(accumulator[i], c);
+        accumulator.getValue()[i] =
+            combineFnWithContexts
+                .get(i)
+                .compact(
+                    TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue()[i]), c);
       }
       return accumulator;
     }
 
     @Override
-    public Coder<Object[]> getAccumulatorCoder(CoderRegistry registry, Coder<DataT> dataCoder)
-        throws CannotProvideCoderException {
+    public TenantAwareValueCoder<Object[]> getAccumulatorCoder(
+        CoderRegistry registry, Coder<DataT> dataCoder) throws CannotProvideCoderException {
       List<Coder<Object>> coders = Lists.newArrayList();
       for (int i = 0; i < combineFnCount; ++i) {
-        Coder<Object> inputCoder =
-            registry.getOutputCoder(extractInputFns.get(i), dataCoder);
-        coders.add(combineFnWithContexts.get(i).getAccumulatorCoder(registry, inputCoder));
+        Coder<Object> inputCoder = registry.getOutputCoder(extractInputFns.get(i), dataCoder);
+        coders.add(
+            combineFnWithContexts.get(i).getAccumulatorCoder(registry, inputCoder).getValueCoder());
       }
-      return new ComposedAccumulatorCoder(coders);
+      return TenantAwareValueCoder.of(new ComposedAccumulatorCoder(coders));
     }
 
     @Override
@@ -495,32 +504,33 @@ public class CombineFns {
 
   /////////////////////////////////////////////////////////////////////////////
 
-  private static class ProjectionIterable implements Iterable<Object> {
-    private final Iterable<Object[]> iterable;
+  private static class ProjectionIterable implements Iterable<TenantAwareValue<Object>> {
+    private final Iterable<TenantAwareValue<Object[]>> iterable;
     private final int column;
 
-    private ProjectionIterable(Iterable<Object[]> iterable, int column) {
+    private ProjectionIterable(Iterable<TenantAwareValue<Object[]>> iterable, int column) {
       this.iterable = iterable;
       this.column = column;
     }
 
     @Override
-    public Iterator<Object> iterator() {
-      final Iterator<Object[]> iter = iterable.iterator();
-      return new Iterator<Object>() {
+    public Iterator<TenantAwareValue<Object>> iterator() {
+      final Iterator<TenantAwareValue<Object[]>> iter = iterable.iterator();
+      return new Iterator<TenantAwareValue<Object>>() {
         @Override
         public boolean hasNext() {
           return iter.hasNext();
         }
 
         @Override
-        public Object next() {
-          return iter.next()[column];
+        public TenantAwareValue<Object> next() {
+          TenantAwareValue<Object[]> tav = iter.next();
+          return TenantAwareValue.of(tav.getTenantId(), tav.getValue()[column]);
         }
 
         @Override
         public void remove() {
-            throw new UnsupportedOperationException();
+          throw new UnsupportedOperationException();
         }
       };
     }
@@ -532,12 +542,11 @@ public class CombineFns {
 
     public ComposedAccumulatorCoder(List<Coder<Object>> coders) {
       this.coders = ImmutableList.copyOf(coders);
-      this.codersCount  = coders.size();
+      this.codersCount = coders.size();
     }
 
     @Override
-    public void encode(Object[] value, OutputStream outStream)
-        throws CoderException, IOException {
+    public void encode(Object[] value, OutputStream outStream) throws CoderException, IOException {
       encode(value, outStream, Context.NESTED);
     }
 
@@ -607,8 +616,7 @@ public class CombineFns {
     for (int i = 0; i < combineFns.size(); i++) {
       HasDisplayData combineFn = combineFns.get(i);
       String token = "combineFn" + (i + 1);
-      builder.add(DisplayData.item(token, combineFn.getClass())
-        .withLabel("Combine Function"));
+      builder.add(DisplayData.item(token, combineFn.getClass()).withLabel("Combine Function"));
       builder.include(token, combineFn);
     }
   }

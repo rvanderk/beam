@@ -18,6 +18,7 @@
 package org.apache.beam.sdk.transforms;
 
 import java.io.Serializable;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /**
  * A function that computes an output value of type {@code OutputT} from an input value of type
@@ -28,5 +29,5 @@ import java.io.Serializable;
  */
 public interface SerializableFunction<InputT, OutputT> extends Serializable {
   /** Returns the result of invoking this function on the given input. */
-  OutputT apply(InputT input);
+  TenantAwareValue<OutputT> apply(TenantAwareValue<InputT> input);
 }

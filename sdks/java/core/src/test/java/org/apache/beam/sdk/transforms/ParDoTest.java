@@ -107,6 +107,7 @@ import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionTuple;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.TupleTagList;
@@ -123,46 +124,48 @@ import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for ParDo.
- */
+/** Tests for ParDo. */
 @RunWith(JUnit4.class)
 public class ParDoTest implements Serializable {
   // This test is Serializable, just so that it's easy to have
   // anonymous inner classes inside the non-static test methods.
 
-  @Rule
-  public final transient TestPipeline pipeline = TestPipeline.create();
+  @Rule public final transient TestPipeline pipeline = TestPipeline.create();
 
-  @Rule
-  public transient ExpectedException thrown = ExpectedException.none();
+  @Rule public transient ExpectedException thrown = ExpectedException.none();
 
   private static class PrintingDoFn extends DoFn<String, String> {
     @ProcessElement
     public void processElement(ProcessContext c, BoundedWindow window) {
-      c.output(c.element() + ":" + c.timestamp().getMillis()
-          + ":" + window.maxTimestamp().getMillis());
+      c.output(
+          c.element() + ":" + c.timestamp().getMillis() + ":" + window.maxTimestamp().getMillis());
     }
   }
+
   static class TestNoOutputDoFn extends DoFn<Integer, String> {
     @ProcessElement
     public void processElement(DoFn<Integer, String>.ProcessContext c) throws Exception {}
   }
 
   static class TestDoFn extends DoFn<Integer, String> {
-    enum State {NOT_SET_UP, UNSTARTED, STARTED, PROCESSING, FINISHED}
-
+    enum State {
+      NOT_SET_UP,
+      UNSTARTED,
+      STARTED,
+      PROCESSING,
+      FINISHED
+    }
 
     State state = State.NOT_SET_UP;
 
     final List<PCollectionView<Integer>> sideInputViews = new ArrayList<>();
     final List<TupleTag<String>> additionalOutputTupleTags = new ArrayList<>();
 
-    public TestDoFn() {
-    }
+    public TestDoFn() {}
 
-    public TestDoFn(List<PCollectionView<Integer>> sideInputViews,
-                    List<TupleTag<String>> additionalOutputTupleTags) {
+    public TestDoFn(
+        List<PCollectionView<Integer>> sideInputViews,
+        List<TupleTag<String>> additionalOutputTupleTags) {
       this.sideInputViews.addAll(sideInputViews);
       this.additionalOutputTupleTags.addAll(additionalOutputTupleTags);
     }
@@ -175,28 +178,30 @@ public class ParDoTest implements Serializable {
 
     @StartBundle
     public void startBundle() {
-      assertThat(state,
-          anyOf(equalTo(State.UNSTARTED), equalTo(State.FINISHED)));
+      assertThat(state, anyOf(equalTo(State.UNSTARTED), equalTo(State.FINISHED)));
 
       state = State.STARTED;
     }
 
     @ProcessElement
     public void processElement(ProcessContext c) {
-      assertThat(state,
-                 anyOf(equalTo(State.STARTED), equalTo(State.PROCESSING)));
+      assertThat(state, anyOf(equalTo(State.STARTED), equalTo(State.PROCESSING)));
       state = State.PROCESSING;
       outputToAllWithSideInputs(c, "processing: " + c.element());
     }
 
     @FinishBundle
     public void finishBundle(FinishBundleContext c) {
-      assertThat(state,
-                 anyOf(equalTo(State.STARTED), equalTo(State.PROCESSING)));
+      assertThat(state, anyOf(equalTo(State.STARTED), equalTo(State.PROCESSING)));
       state = State.FINISHED;
-      c.output("finished", BoundedWindow.TIMESTAMP_MIN_VALUE, GlobalWindow.INSTANCE);
+      c.output(
+          TenantAwareValue.NULL_TENANT,
+          "finished",
+          BoundedWindow.TIMESTAMP_MIN_VALUE,
+          GlobalWindow.INSTANCE);
       for (TupleTag<String> additionalOutputTupleTag : additionalOutputTupleTags) {
         c.output(
+            TenantAwareValue.NULL_TENANT,
             additionalOutputTupleTag,
             additionalOutputTupleTag.getId() + ": " + "finished",
             BoundedWindow.TIMESTAMP_MIN_VALUE,
@@ -214,8 +219,7 @@ public class ParDoTest implements Serializable {
       }
       c.output(value);
       for (TupleTag<String> additionalOutputTupleTag : additionalOutputTupleTags) {
-        c.output(additionalOutputTupleTag,
-                     additionalOutputTupleTag.getId() + ": " + value);
+        c.output(additionalOutputTupleTag, additionalOutputTupleTag.getId() + ": " + value);
       }
     }
   }
@@ -253,8 +257,7 @@ public class ParDoTest implements Serializable {
 
   private static class StrangelyNamedDoer extends DoFn<Integer, String> {
     @ProcessElement
-    public void processElement(ProcessContext c) {
-    }
+    public void processElement(ProcessContext c) {}
   }
 
   static class TestOutputTimestampDoFn<T extends Number> extends DoFn<T, T> {
@@ -269,8 +272,7 @@ public class ParDoTest implements Serializable {
     private Duration allowedTimestampSkew;
     private Duration durationToShift;
 
-    public TestShiftTimestampDoFn(Duration allowedTimestampSkew,
-                                  Duration durationToShift) {
+    public TestShiftTimestampDoFn(Duration allowedTimestampSkew, Duration durationToShift) {
       this.allowedTimestampSkew = allowedTimestampSkew;
       this.durationToShift = durationToShift;
     }
@@ -279,6 +281,7 @@ public class ParDoTest implements Serializable {
     public Duration getAllowedTimestampSkew() {
       return allowedTimestampSkew;
     }
+
     @ProcessElement
     public void processElement(ProcessContext c) {
       Instant timestamp = c.timestamp();
@@ -296,11 +299,10 @@ public class ParDoTest implements Serializable {
     }
   }
 
-  static class MultiFilter
-      extends PTransform<PCollection<Integer>, PCollectionTuple> {
+  static class MultiFilter extends PTransform<PCollection<Integer>, PCollectionTuple> {
 
-    private static final TupleTag<Integer> BY2 = new TupleTag<Integer>("by2"){};
-    private static final TupleTag<Integer> BY3 = new TupleTag<Integer>("by3"){};
+    private static final TupleTag<Integer> BY2 = new TupleTag<Integer>("by2") {};
+    private static final TupleTag<Integer> BY3 = new TupleTag<Integer>("by3") {};
 
     @Override
     public PCollectionTuple expand(PCollection<Integer> input) {
@@ -329,14 +331,15 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testParDo() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    PCollection<String> output = pipeline
-        .apply(Create.of(inputs))
-        .apply(ParDo.of(new TestDoFn()));
+    PCollection<String> output = pipeline.apply(Create.of(inputs)).apply(ParDo.of(new TestDoFn()));
 
-    PAssert.that(output)
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
+    PAssert.that(output).satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
 
     pipeline.run();
   }
@@ -345,14 +348,15 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testParDo2() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    PCollection<String> output = pipeline
-        .apply(Create.of(inputs))
-        .apply(ParDo.of(new TestDoFn()));
+    PCollection<String> output = pipeline.apply(Create.of(inputs)).apply(ParDo.of(new TestDoFn()));
 
-    PAssert.that(output)
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
+    PAssert.that(output).satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
 
     pipeline.run();
   }
@@ -361,14 +365,18 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testParDoEmpty() {
 
-    List<Integer> inputs = Arrays.asList();
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    PCollection<String> output = pipeline
-        .apply(Create.of(inputs).withCoder(VarIntCoder.of()))
-        .apply("TestDoFn", ParDo.of(new TestDoFn()));
+    PCollection<String> output =
+        pipeline
+            .apply(Create.of(inputs).withCoder(VarIntCoder.of()))
+            .apply("TestDoFn", ParDo.of(new TestDoFn()));
 
-    PAssert.that(output)
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
+    PAssert.that(output).satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
 
     pipeline.run();
   }
@@ -377,11 +385,16 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testParDoEmptyOutputs() {
 
-    List<Integer> inputs = Arrays.asList();
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    PCollection<String> output = pipeline
-        .apply(Create.of(inputs).withCoder(VarIntCoder.of()))
-        .apply("TestDoFn", ParDo.of(new TestNoOutputDoFn()));
+    PCollection<String> output =
+        pipeline
+            .apply(Create.of(inputs).withCoder(VarIntCoder.of()))
+            .apply("TestDoFn", ParDo.of(new TestNoOutputDoFn()));
 
     PAssert.that(output).empty();
 
@@ -392,13 +405,17 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testParDoWithTaggedOutput() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    TupleTag<String> mainOutputTag = new TupleTag<String>("main"){};
-    TupleTag<String> additionalOutputTag1 = new TupleTag<String>("additional1"){};
-    TupleTag<String> additionalOutputTag2 = new TupleTag<String>("additional2"){};
-    TupleTag<String> additionalOutputTag3 = new TupleTag<String>("additional3"){};
-    TupleTag<String> additionalOutputTagUnwritten = new TupleTag<String>("unwrittenOutput"){};
+    TupleTag<String> mainOutputTag = new TupleTag<String>("main") {};
+    TupleTag<String> additionalOutputTag1 = new TupleTag<String>("additional1") {};
+    TupleTag<String> additionalOutputTag2 = new TupleTag<String>("additional2") {};
+    TupleTag<String> additionalOutputTag3 = new TupleTag<String>("additional3") {};
+    TupleTag<String> additionalOutputTagUnwritten = new TupleTag<String>("unwrittenOutput") {};
 
     PCollectionTuple outputs =
         pipeline
@@ -420,14 +437,11 @@ public class ParDoTest implements Serializable {
         .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
 
     PAssert.that(outputs.get(additionalOutputTag1))
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs)
-                   .fromOutput(additionalOutputTag1));
+        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs).fromOutput(additionalOutputTag1));
     PAssert.that(outputs.get(additionalOutputTag2))
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs)
-                   .fromOutput(additionalOutputTag2));
+        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs).fromOutput(additionalOutputTag2));
     PAssert.that(outputs.get(additionalOutputTag3))
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs)
-                   .fromOutput(additionalOutputTag3));
+        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs).fromOutput(additionalOutputTag3));
     PAssert.that(outputs.get(additionalOutputTagUnwritten)).empty();
 
     pipeline.run();
@@ -436,11 +450,11 @@ public class ParDoTest implements Serializable {
   @Test
   @Category(ValidatesRunner.class)
   public void testParDoEmptyWithTaggedOutput() {
-    TupleTag<String> mainOutputTag = new TupleTag<String>("main"){};
-    TupleTag<String> additionalOutputTag1 = new TupleTag<String>("additional1"){};
-    TupleTag<String> additionalOutputTag2 = new TupleTag<String>("additional2"){};
-    TupleTag<String> additionalOutputTag3 = new TupleTag<String>("additional3"){};
-    TupleTag<String> additionalOutputTagUnwritten = new TupleTag<String>("unwrittenOutput"){};
+    TupleTag<String> mainOutputTag = new TupleTag<String>("main") {};
+    TupleTag<String> additionalOutputTag1 = new TupleTag<String>("additional1") {};
+    TupleTag<String> additionalOutputTag2 = new TupleTag<String>("additional2") {};
+    TupleTag<String> additionalOutputTag3 = new TupleTag<String>("additional3") {};
+    TupleTag<String> additionalOutputTagUnwritten = new TupleTag<String>("unwrittenOutput") {};
 
     PCollectionTuple outputs =
         pipeline
@@ -458,19 +472,16 @@ public class ParDoTest implements Serializable {
                             .and(additionalOutputTagUnwritten)
                             .and(additionalOutputTag2)));
 
-    List<Integer> inputs = Collections.emptyList();
+    List<TenantAwareValue<Integer>> inputs = Collections.emptyList();
     PAssert.that(outputs.get(mainOutputTag))
         .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
 
     PAssert.that(outputs.get(additionalOutputTag1))
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs)
-                   .fromOutput(additionalOutputTag1));
+        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs).fromOutput(additionalOutputTag1));
     PAssert.that(outputs.get(additionalOutputTag2))
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs)
-                   .fromOutput(additionalOutputTag2));
+        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs).fromOutput(additionalOutputTag2));
     PAssert.that(outputs.get(additionalOutputTag3))
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs)
-                   .fromOutput(additionalOutputTag3));
+        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs).fromOutput(additionalOutputTag3));
     PAssert.that(outputs.get(additionalOutputTagUnwritten)).empty();
 
     pipeline.run();
@@ -479,17 +490,18 @@ public class ParDoTest implements Serializable {
   @Test
   @Category(ValidatesRunner.class)
   public void testParDoWithEmptyTaggedOutput() {
-    TupleTag<String> mainOutputTag = new TupleTag<String>("main"){};
-    TupleTag<String> additionalOutputTag1 = new TupleTag<String>("additional1"){};
-    TupleTag<String> additionalOutputTag2 = new TupleTag<String>("additional2"){};
+    TupleTag<String> mainOutputTag = new TupleTag<String>("main") {};
+    TupleTag<String> additionalOutputTag1 = new TupleTag<String>("additional1") {};
+    TupleTag<String> additionalOutputTag2 = new TupleTag<String>("additional2") {};
 
-    PCollectionTuple outputs = pipeline
-        .apply(Create.empty(VarIntCoder.of()))
-        .apply(ParDo
-               .of(new TestNoOutputDoFn())
-               .withOutputTags(
-                   mainOutputTag,
-                   TupleTagList.of(additionalOutputTag1).and(additionalOutputTag2)));
+    PCollectionTuple outputs =
+        pipeline
+            .apply(Create.empty(VarIntCoder.of()))
+            .apply(
+                ParDo.of(new TestNoOutputDoFn())
+                    .withOutputTags(
+                        mainOutputTag,
+                        TupleTagList.of(additionalOutputTag1).and(additionalOutputTag2)));
 
     PAssert.that(outputs.get(mainOutputTag)).empty();
 
@@ -499,25 +511,30 @@ public class ParDoTest implements Serializable {
     pipeline.run();
   }
 
-
   @Test
   @Category(ValidatesRunner.class)
   public void testParDoWithOnlyTaggedOutput() {
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    final TupleTag<Void> mainOutputTag = new TupleTag<Void>("main") {};
+    final TupleTag<Integer> additionalOutputTag = new TupleTag<Integer>("additional") {};
 
-    final TupleTag<Void> mainOutputTag = new TupleTag<Void>("main"){};
-    final TupleTag<Integer> additionalOutputTag = new TupleTag<Integer>("additional"){};
-
-    PCollectionTuple outputs = pipeline
-        .apply(Create.of(inputs))
-        .apply(ParDo
-            .of(new DoFn<Integer, Void>(){
-                @ProcessElement
-                public void processElement(ProcessContext c) {
-                  c.output(additionalOutputTag, c.element());
-                }})
-            .withOutputTags(mainOutputTag, TupleTagList.of(additionalOutputTag)));
+    PCollectionTuple outputs =
+        pipeline
+            .apply(Create.of(inputs))
+            .apply(
+                ParDo.of(
+                        new DoFn<Integer, Void>() {
+                          @ProcessElement
+                          public void processElement(ProcessContext c) {
+                            c.output(additionalOutputTag, c.element());
+                          }
+                        })
+                    .withOutputTags(mainOutputTag, TupleTagList.of(additionalOutputTag)));
 
     PAssert.that(outputs.get(mainOutputTag)).empty();
     PAssert.that(outputs.get(additionalOutputTag)).containsInAnyOrder(inputs);
@@ -528,9 +545,13 @@ public class ParDoTest implements Serializable {
   @Test
   @Category(NeedsRunner.class)
   public void testParDoWritingToUndeclaredTag() {
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    TupleTag<String> notOutputTag = new TupleTag<String>("additional"){};
+    TupleTag<String> notOutputTag = new TupleTag<String>("additional") {};
 
     pipeline
         .apply(Create.of(inputs))
@@ -546,20 +567,29 @@ public class ParDoTest implements Serializable {
   @Test
   @Category(ValidatesRunner.class)
   public void testParDoWithSideInputs() {
-
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
     PCollectionView<Integer> sideInput1 =
         pipeline
-            .apply("CreateSideInput1", Create.of(11))
+            .apply(
+                "CreateSideInput1",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11)))
             .apply("ViewSideInput1", View.asSingleton());
     PCollectionView<Integer> sideInputUnread =
         pipeline
-            .apply("CreateSideInputUnread", Create.of(-3333))
+            .apply(
+                "CreateSideInputUnread",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -3333)))
             .apply("ViewSideInputUnread", View.asSingleton());
     PCollectionView<Integer> sideInput2 =
         pipeline
-            .apply("CreateSideInput2", Create.of(222))
+            .apply(
+                "CreateSideInput2",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 222)))
             .apply("ViewSideInput2", View.asSingleton());
 
     PCollection<String> output =
@@ -570,9 +600,11 @@ public class ParDoTest implements Serializable {
                     .withSideInputs(sideInput1, sideInputUnread, sideInput2));
 
     PAssert.that(output)
-        .satisfies(ParDoTest.HasExpectedOutput
-                   .forInput(inputs)
-                   .andSideInputs(11, 222));
+        .satisfies(
+            ParDoTest.HasExpectedOutput.forInput(inputs)
+                .andSideInputs(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 222)));
 
     pipeline.run();
   }
@@ -581,19 +613,29 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testParDoWithSideInputsIsCumulative() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
     PCollectionView<Integer> sideInput1 =
         pipeline
-            .apply("CreateSideInput1", Create.of(11))
+            .apply(
+                "CreateSideInput1",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11)))
             .apply("ViewSideInput1", View.asSingleton());
     PCollectionView<Integer> sideInputUnread =
         pipeline
-            .apply("CreateSideInputUnread", Create.of(-3333))
+            .apply(
+                "CreateSideInputUnread",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -3333)))
             .apply("ViewSideInputUnread", View.asSingleton());
     PCollectionView<Integer> sideInput2 =
         pipeline
-            .apply("CreateSideInput2", Create.of(222))
+            .apply(
+                "CreateSideInput2",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 222)))
             .apply("ViewSideInput2", View.asSingleton());
 
     PCollection<String> output =
@@ -606,9 +648,11 @@ public class ParDoTest implements Serializable {
                     .withSideInputs(sideInput2));
 
     PAssert.that(output)
-        .satisfies(ParDoTest.HasExpectedOutput
-                   .forInput(inputs)
-                   .andSideInputs(11, 222));
+        .satisfies(
+            ParDoTest.HasExpectedOutput.forInput(inputs)
+                .andSideInputs(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 222)));
 
     pipeline.run();
   }
@@ -617,22 +661,32 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testMultiOutputParDoWithSideInputs() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    final TupleTag<String> mainOutputTag = new TupleTag<String>("main"){};
-    final TupleTag<Void> additionalOutputTag = new TupleTag<Void>("output"){};
+    final TupleTag<String> mainOutputTag = new TupleTag<String>("main") {};
+    final TupleTag<Void> additionalOutputTag = new TupleTag<Void>("output") {};
 
     PCollectionView<Integer> sideInput1 =
         pipeline
-            .apply("CreateSideInput1", Create.of(11))
+            .apply(
+                "CreateSideInput1",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11)))
             .apply("ViewSideInput1", View.asSingleton());
     PCollectionView<Integer> sideInputUnread =
         pipeline
-            .apply("CreateSideInputUnread", Create.of(-3333))
+            .apply(
+                "CreateSideInputUnread",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -3333)))
             .apply("ViewSideInputUnread", View.asSingleton());
     PCollectionView<Integer> sideInput2 =
         pipeline
-            .apply("CreateSideInput2", Create.of(222))
+            .apply(
+                "CreateSideInput2",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 222)))
             .apply("ViewSideInput2", View.asSingleton());
 
     PCollectionTuple outputs =
@@ -646,9 +700,11 @@ public class ParDoTest implements Serializable {
                     .withOutputTags(mainOutputTag, TupleTagList.of(additionalOutputTag)));
 
     PAssert.that(outputs.get(mainOutputTag))
-        .satisfies(ParDoTest.HasExpectedOutput
-                   .forInput(inputs)
-                   .andSideInputs(11, 222));
+        .satisfies(
+            ParDoTest.HasExpectedOutput.forInput(inputs)
+                .andSideInputs(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 222)));
 
     pipeline.run();
   }
@@ -657,22 +713,32 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testMultiOutputParDoWithSideInputsIsCumulative() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    final TupleTag<String> mainOutputTag = new TupleTag<String>("main"){};
-    final TupleTag<Void> additionalOutputTag = new TupleTag<Void>("output"){};
+    final TupleTag<String> mainOutputTag = new TupleTag<String>("main") {};
+    final TupleTag<Void> additionalOutputTag = new TupleTag<Void>("output") {};
 
     PCollectionView<Integer> sideInput1 =
         pipeline
-            .apply("CreateSideInput1", Create.of(11))
+            .apply(
+                "CreateSideInput1",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11)))
             .apply("ViewSideInput1", View.asSingleton());
     PCollectionView<Integer> sideInputUnread =
         pipeline
-            .apply("CreateSideInputUnread", Create.of(-3333))
+            .apply(
+                "CreateSideInputUnread",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -3333)))
             .apply("ViewSideInputUnread", View.asSingleton());
     PCollectionView<Integer> sideInput2 =
         pipeline
-            .apply("CreateSideInput2", Create.of(222))
+            .apply(
+                "CreateSideInput2",
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 222)))
             .apply("ViewSideInput2", View.asSingleton());
 
     PCollectionTuple outputs =
@@ -686,9 +752,11 @@ public class ParDoTest implements Serializable {
                     .withOutputTags(mainOutputTag, TupleTagList.of(additionalOutputTag)));
 
     PAssert.that(outputs.get(mainOutputTag))
-        .satisfies(ParDoTest.HasExpectedOutput
-                   .forInput(inputs)
-                   .andSideInputs(11, 222));
+        .satisfies(
+            ParDoTest.HasExpectedOutput.forInput(inputs)
+                .andSideInputs(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 222)));
 
     pipeline.run();
   }
@@ -697,10 +765,16 @@ public class ParDoTest implements Serializable {
   @Category(NeedsRunner.class)
   public void testParDoReadingFromUnknownSideInput() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
     PCollectionView<Integer> sideView =
-        pipeline.apply("Create3", Create.of(3)).apply(View.asSingleton());
+        pipeline
+            .apply("Create3", Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3)))
+            .apply(View.asSingleton());
 
     pipeline
         .apply("CreateMain", Create.of(inputs))
@@ -738,17 +812,25 @@ public class ParDoTest implements Serializable {
 
     SlidingWindows windowFn =
         SlidingWindows.of(Duration.standardSeconds(5)).every(Duration.standardSeconds(1));
-    PCollectionView<Integer> view = pipeline.apply(Create.of(1)).apply(View.asSingleton());
+    PCollectionView<Integer> view =
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1)))
+            .apply(View.asSingleton());
     PCollection<String> res =
         pipeline
-            .apply(Create.timestamped(TimestampedValue.of("a", now)))
+            .apply(
+                Create.timestamped(
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of("a", now))))
             .apply(Window.into(windowFn))
             .apply(ParDo.of(new FnWithSideInputs(view)).withSideInputs(view));
 
     for (int i = 0; i < 4; ++i) {
       Instant base = now.minus(Duration.standardSeconds(i));
       IntervalWindow window = new IntervalWindow(base, base.plus(Duration.standardSeconds(5)));
-      PAssert.that(res).inWindow(window).containsInAnyOrder("a:1");
+      PAssert.that(res)
+          .inWindow(window)
+          .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "a:1"));
     }
 
     pipeline.run();
@@ -757,10 +839,13 @@ public class ParDoTest implements Serializable {
   @Test
   @Category(NeedsRunner.class)
   public void testParDoWithErrorInStartBatch() {
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    pipeline.apply(Create.of(inputs))
-        .apply(ParDo.of(new TestStartBatchErrorDoFn()));
+    pipeline.apply(Create.of(inputs)).apply(ParDo.of(new TestStartBatchErrorDoFn()));
 
     thrown.expect(RuntimeException.class);
     thrown.expectMessage("test error in initialize");
@@ -771,10 +856,13 @@ public class ParDoTest implements Serializable {
   @Category(NeedsRunner.class)
   public void testParDoWithErrorInProcessElement() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    pipeline.apply(Create.of(inputs))
-        .apply(ParDo.of(new TestProcessElementErrorDoFn()));
+    pipeline.apply(Create.of(inputs)).apply(ParDo.of(new TestProcessElementErrorDoFn()));
 
     thrown.expect(RuntimeException.class);
     thrown.expectMessage("test error in process");
@@ -785,10 +873,13 @@ public class ParDoTest implements Serializable {
   @Category(NeedsRunner.class)
   public void testParDoWithErrorInFinishBatch() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    pipeline.apply(Create.of(inputs))
-        .apply(ParDo.of(new TestFinishBatchErrorDoFn()));
+    pipeline.apply(Create.of(inputs)).apply(ParDo.of(new TestFinishBatchErrorDoFn()));
 
     thrown.expect(RuntimeException.class);
     thrown.expectMessage("test error in finalize");
@@ -799,7 +890,10 @@ public class ParDoTest implements Serializable {
   public void testParDoOutputNameBasedOnDoFnWithTrimmedSuffix() {
     pipeline.enableAbandonedNodeEnforcement(false);
 
-    PCollection<String> output = pipeline.apply(Create.of(1)).apply(ParDo.of(new TestDoFn()));
+    PCollection<String> output =
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1)))
+            .apply(ParDo.of(new TestDoFn()));
     assertThat(output.getName(), containsString("ParDo(Test)"));
   }
 
@@ -808,7 +902,9 @@ public class ParDoTest implements Serializable {
     pipeline.enableAbandonedNodeEnforcement(false);
 
     PCollection<String> output =
-        pipeline.apply(Create.of(1)).apply("MyParDo", ParDo.of(new TestDoFn()));
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1)))
+            .apply("MyParDo", ParDo.of(new TestDoFn()));
     assertThat(output.getName(), containsString("MyParDo"));
   }
 
@@ -817,7 +913,9 @@ public class ParDoTest implements Serializable {
     pipeline.enableAbandonedNodeEnforcement(false);
 
     PCollection<String> output =
-        pipeline.apply(Create.of(1)).apply(ParDo.of(new StrangelyNamedDoer()));
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1)))
+            .apply(ParDo.of(new StrangelyNamedDoer()));
     assertThat(output.getName(), containsString("ParDo(StrangelyNamedDoer)"));
   }
 
@@ -837,15 +935,20 @@ public class ParDoTest implements Serializable {
   public void testParDoWithTaggedOutputName() {
     pipeline.enableAbandonedNodeEnforcement(false);
 
-    TupleTag<String> mainOutputTag = new TupleTag<String>("main"){};
-    TupleTag<String> additionalOutputTag1 = new TupleTag<String>("output1"){};
-    TupleTag<String> additionalOutputTag2 = new TupleTag<String>("output2"){};
-    TupleTag<String> additionalOutputTag3 = new TupleTag<String>("output3"){};
-    TupleTag<String> additionalOutputTagUnwritten = new TupleTag<String>("unwrittenOutput"){};
+    TupleTag<String> mainOutputTag = new TupleTag<String>("main") {};
+    TupleTag<String> additionalOutputTag1 = new TupleTag<String>("output1") {};
+    TupleTag<String> additionalOutputTag2 = new TupleTag<String>("output2") {};
+    TupleTag<String> additionalOutputTag3 = new TupleTag<String>("output3") {};
+    TupleTag<String> additionalOutputTagUnwritten = new TupleTag<String>("unwrittenOutput") {};
 
     PCollectionTuple outputs =
         pipeline
-            .apply(Create.of(Arrays.asList(3, -42, 666)))
+            .apply(
+                Create.of(
+                    Arrays.asList(
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666))))
             .setName("MyInput")
             .apply(
                 "MyParDo",
@@ -865,8 +968,7 @@ public class ParDoTest implements Serializable {
     assertEquals("MyParDo.output1", outputs.get(additionalOutputTag1).getName());
     assertEquals("MyParDo.output2", outputs.get(additionalOutputTag2).getName());
     assertEquals("MyParDo.output3", outputs.get(additionalOutputTag3).getName());
-    assertEquals("MyParDo.unwrittenOutput",
-                 outputs.get(additionalOutputTagUnwritten).getName());
+    assertEquals("MyParDo.unwrittenOutput", outputs.get(additionalOutputTagUnwritten).getName());
   }
 
   @Test
@@ -904,21 +1006,27 @@ public class ParDoTest implements Serializable {
   @Category(ValidatesRunner.class)
   public void testParDoInCustomTransform() {
 
-    List<Integer> inputs = Arrays.asList(3, -42, 666);
+    List<TenantAwareValue<Integer>> inputs =
+        Arrays.asList(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -42),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 666));
 
-    PCollection<String> output = pipeline
-        .apply(Create.of(inputs))
-        .apply("CustomTransform", new PTransform<PCollection<Integer>, PCollection<String>>() {
-            @Override
-            public PCollection<String> expand(PCollection<Integer> input) {
-              return input.apply(ParDo.of(new TestDoFn()));
-            }
-          });
+    PCollection<String> output =
+        pipeline
+            .apply(Create.of(inputs))
+            .apply(
+                "CustomTransform",
+                new PTransform<PCollection<Integer>, PCollection<String>>() {
+                  @Override
+                  public PCollection<String> expand(PCollection<Integer> input) {
+                    return input.apply(ParDo.of(new TestDoFn()));
+                  }
+                });
 
     // Test that Coder inference of the result works through
     // user-defined PTransforms.
-    PAssert.that(output)
-        .satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
+    PAssert.that(output).satisfies(ParDoTest.HasExpectedOutput.forInput(inputs));
 
     pipeline.run();
   }
@@ -927,43 +1035,51 @@ public class ParDoTest implements Serializable {
   @Category(NeedsRunner.class)
   public void testMultiOutputChaining() {
 
-    PCollectionTuple filters = pipeline
-        .apply(Create.of(Arrays.asList(3, 4, 5, 6)))
-        .apply(new MultiFilter());
+    PCollectionTuple filters =
+        pipeline
+            .apply(
+                Create.of(
+                    Arrays.asList(
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5),
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6))))
+            .apply(new MultiFilter());
     PCollection<Integer> by2 = filters.get(MultiFilter.BY2);
     PCollection<Integer> by3 = filters.get(MultiFilter.BY3);
 
     // Apply additional filters to each operation.
-    PCollection<Integer> by2then3 = by2
-        .apply("Filter3sAgain", ParDo.of(new MultiFilter.FilterFn(3)));
-    PCollection<Integer> by3then2 = by3
-        .apply("Filter2sAgain", ParDo.of(new MultiFilter.FilterFn(2)));
+    PCollection<Integer> by2then3 =
+        by2.apply("Filter3sAgain", ParDo.of(new MultiFilter.FilterFn(3)));
+    PCollection<Integer> by3then2 =
+        by3.apply("Filter2sAgain", ParDo.of(new MultiFilter.FilterFn(2)));
 
-    PAssert.that(by2then3).containsInAnyOrder(6);
-    PAssert.that(by3then2).containsInAnyOrder(6);
+    PAssert.that(by2then3).containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6));
+    PAssert.that(by3then2).containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6));
     pipeline.run();
   }
 
   @Test
   public void testJsonEscaping() {
     // Declare an arbitrary function and make sure we can serialize it
-    DoFn<Integer, Integer> doFn = new DoFn<Integer, Integer>() {
-      @ProcessElement
-      public void processElement(ProcessContext c) {
-        c.output(c.element() + 1);
-      }
-    };
+    DoFn<Integer, Integer> doFn =
+        new DoFn<Integer, Integer>() {
+          @ProcessElement
+          public void processElement(ProcessContext c) {
+            c.output(c.element() + 1);
+          }
+        };
 
     byte[] serializedBytes = serializeToByteArray(doFn);
     String serializedJson = byteArrayToJsonString(serializedBytes);
-    assertArrayEquals(
-        serializedBytes, jsonStringToByteArray(serializedJson));
+    assertArrayEquals(serializedBytes, jsonStringToByteArray(serializedJson));
   }
 
-  private static class TestDummy { }
+  private static class TestDummy {}
 
   private static class TestDummyCoder extends AtomicCoder<TestDummy> {
-    private TestDummyCoder() { }
+    private TestDummyCoder() {}
+
     private static final TestDummyCoder INSTANCE = new TestDummyCoder();
 
     @JsonCreator
@@ -973,12 +1089,10 @@ public class ParDoTest implements Serializable {
 
     @Override
     public void encode(TestDummy value, OutputStream outStream)
-        throws CoderException, IOException {
-    }
+        throws CoderException, IOException {}
 
     @Override
-    public TestDummy decode(InputStream inStream)
-        throws CoderException, IOException {
+    public TestDummy decode(InputStream inStream) throws CoderException, IOException {
       return new TestDummy();
     }
 
@@ -988,8 +1102,7 @@ public class ParDoTest implements Serializable {
     }
 
     @Override
-    public void registerByteSizeObserver(
-        TestDummy value, ElementByteSizeObserver observer)
+    public void registerByteSizeObserver(TestDummy value, ElementByteSizeObserver observer)
         throws Exception {
       observer.update(0L);
     }
@@ -1000,6 +1113,7 @@ public class ParDoTest implements Serializable {
 
   private static class TaggedOutputDummyFn extends DoFn<Integer, Integer> {
     private TupleTag<TestDummy> dummyOutputTag;
+
     public TaggedOutputDummyFn(TupleTag<TestDummy> dummyOutputTag) {
       this.dummyOutputTag = dummyOutputTag;
     }
@@ -1008,19 +1122,21 @@ public class ParDoTest implements Serializable {
     public void processElement(ProcessContext c) {
       c.output(1);
       c.output(dummyOutputTag, new TestDummy());
-     }
+    }
   }
 
   private static class MainOutputDummyFn extends DoFn<Integer, TestDummy> {
     private TupleTag<Integer> intOutputTag;
+
     public MainOutputDummyFn(TupleTag<Integer> intOutputTag) {
       this.intOutputTag = intOutputTag;
     }
+
     @ProcessElement
     public void processElement(ProcessContext c) {
       c.output(new TestDummy());
       c.output(intOutputTag, 1);
-     }
+    }
   }
 
   private static class MyInteger implements Comparable<MyInteger> {
@@ -1047,7 +1163,6 @@ public class ParDoTest implements Serializable {
       MyInteger myInteger = (MyInteger) o;
 
       return value == myInteger.value;
-
     }
 
     @Override
@@ -1076,14 +1191,12 @@ public class ParDoTest implements Serializable {
     }
 
     @Override
-    public void encode(MyInteger value, OutputStream outStream)
-        throws CoderException, IOException {
+    public void encode(MyInteger value, OutputStream outStream) throws CoderException, IOException {
       delegate.encode(value.getValue(), outStream);
     }
 
     @Override
-    public MyInteger decode(InputStream inStream) throws CoderException,
-        IOException {
+    public MyInteger decode(InputStream inStream) throws CoderException, IOException {
       return new MyInteger(delegate.decode(inStream));
     }
   }
@@ -1091,39 +1204,40 @@ public class ParDoTest implements Serializable {
   /** PAssert "matcher" for expected output. */
   static class HasExpectedOutput
       implements SerializableFunction<Iterable<String>, Void>, Serializable {
-    private final List<Integer> inputs;
-    private final List<Integer> sideInputs;
+    private final List<TenantAwareValue<Integer>> inputs;
+    private final List<TenantAwareValue<Integer>> sideInputs;
     private final String additionalOutput;
 
-    public static HasExpectedOutput forInput(List<Integer> inputs) {
+    public static HasExpectedOutput forInput(List<TenantAwareValue<Integer>> inputs) {
       return new HasExpectedOutput(new ArrayList<>(inputs), new ArrayList<>(), "");
     }
 
-    private HasExpectedOutput(List<Integer> inputs,
-                              List<Integer> sideInputs,
-                              String additionalOutput) {
+    private HasExpectedOutput(
+        List<TenantAwareValue<Integer>> inputs,
+        List<TenantAwareValue<Integer>> sideInputs,
+        String additionalOutput) {
       this.inputs = inputs;
       this.sideInputs = sideInputs;
       this.additionalOutput = additionalOutput;
     }
 
-    public HasExpectedOutput andSideInputs(Integer... sideInputValues) {
-      return new HasExpectedOutput(
-          inputs, Arrays.asList(sideInputValues), additionalOutput);
+    public HasExpectedOutput andSideInputs(TenantAwareValue<Integer>... sideInputValues) {
+      return new HasExpectedOutput(inputs, Arrays.asList(sideInputValues), additionalOutput);
     }
 
     public HasExpectedOutput fromOutput(TupleTag<String> outputTag) {
       return fromOutput(outputTag.getId());
     }
+
     public HasExpectedOutput fromOutput(String outputId) {
       return new HasExpectedOutput(inputs, sideInputs, outputId);
     }
 
     @Override
-    public Void apply(Iterable<String> outputs) {
+    public TenantAwareValue<Void> apply(TenantAwareValue<Iterable<String>> outputs) {
       List<String> processeds = new ArrayList<>();
       List<String> finisheds = new ArrayList<>();
-      for (String output : outputs) {
+      for (String output : outputs.getValue()) {
         if (output.contains("finished")) {
           finisheds.add(output);
         } else {
@@ -1146,9 +1260,9 @@ public class ParDoTest implements Serializable {
       }
 
       List<String> expectedProcesseds = new ArrayList<>();
-      for (Integer input : inputs) {
+      for (TenantAwareValue<Integer> input : inputs) {
         expectedProcesseds.add(
-            additionalOutputPrefix + "processing: " + input + sideInputsSuffix);
+            additionalOutputPrefix + "processing: " + input.getValue() + sideInputsSuffix);
       }
       String[] expectedProcessedsArray =
           expectedProcesseds.toArray(new String[expectedProcesseds.size()]);
@@ -1166,13 +1280,19 @@ public class ParDoTest implements Serializable {
   @Category(NeedsRunner.class)
   public void testTaggedOutputUnknownCoder() throws Exception {
 
-    PCollection<Integer> input = pipeline
-        .apply(Create.of(Arrays.asList(1, 2, 3)));
+    PCollection<Integer> input =
+        pipeline.apply(
+            Create.of(
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3))));
 
     final TupleTag<Integer> mainOutputTag = new TupleTag<>("main");
     final TupleTag<TestDummy> additionalOutputTag = new TupleTag<>("unknownSide");
-    input.apply(ParDo.of(new TaggedOutputDummyFn(additionalOutputTag))
-        .withOutputTags(mainOutputTag, TupleTagList.of(additionalOutputTag)));
+    input.apply(
+        ParDo.of(new TaggedOutputDummyFn(additionalOutputTag))
+            .withOutputTags(mainOutputTag, TupleTagList.of(additionalOutputTag)));
 
     thrown.expect(IllegalStateException.class);
     thrown.expectMessage("Unable to return a default Coder");
@@ -1183,8 +1303,13 @@ public class ParDoTest implements Serializable {
   public void testTaggedOutputUnregisteredExplicitCoder() throws Exception {
     pipeline.enableAbandonedNodeEnforcement(false);
 
-    PCollection<Integer> input = pipeline
-        .apply(Create.of(Arrays.asList(1, 2, 3)));
+    PCollection<Integer> input =
+        pipeline.apply(
+            Create.of(
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3))));
 
     final TupleTag<Integer> mainOutputTag = new TupleTag<>("main");
     final TupleTag<TestDummy> additionalOutputTag = new TupleTag<>("unregisteredSide");
@@ -1201,7 +1326,8 @@ public class ParDoTest implements Serializable {
     outputTuple
         .get(additionalOutputTag)
         .finishSpecifyingOutput("ParDo", input, pardo); // Check for crashes
-    assertEquals(new TestDummyCoder(),
+    assertEquals(
+        new TestDummyCoder(),
         outputTuple.get(additionalOutputTag).getCoder()); // Check for corruption
   }
 
@@ -1209,8 +1335,13 @@ public class ParDoTest implements Serializable {
   @Category(NeedsRunner.class)
   public void testMainOutputUnregisteredExplicitCoder() {
 
-    PCollection<Integer> input = pipeline
-        .apply(Create.of(Arrays.asList(1, 2, 3)));
+    PCollection<Integer> input =
+        pipeline.apply(
+            Create.of(
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3))));
 
     final TupleTag<TestDummy> mainOutputTag = new TupleTag<>("unregisteredMain");
     final TupleTag<Integer> additionalOutputTag = new TupleTag<Integer>("additionalOutput") {};
@@ -1233,33 +1364,38 @@ public class ParDoTest implements Serializable {
 
     final TupleTag<TestDummy> mainOutputTag = new TupleTag<>("main");
     final TupleTag<TestDummy> additionalOutputTag = new TupleTag<>("additionalOutput");
-    PCollectionTuple tuple = pipeline
-        .apply(Create.of(new TestDummy())
-            .withCoder(TestDummyCoder.of()))
-        .apply(ParDo
-            .of(
-                new DoFn<TestDummy, TestDummy>() {
-                  @ProcessElement
-                  public void processElement(ProcessContext context) {
-                    TestDummy element = context.element();
-                    context.output(element);
-                    context.output(additionalOutputTag, element);
-                  }
-                })
-            .withOutputTags(mainOutputTag, TupleTagList.of(additionalOutputTag))
-        );
+    PCollectionTuple tuple =
+        pipeline
+            .apply(
+                Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new TestDummy()))
+                    .withCoder(TestDummyCoder.of()))
+            .apply(
+                ParDo.of(
+                        new DoFn<TestDummy, TestDummy>() {
+                          @ProcessElement
+                          public void processElement(ProcessContext context) {
+                            TestDummy element = context.element();
+                            context.output(element);
+                            context.output(additionalOutputTag, element);
+                          }
+                        })
+                    .withOutputTags(mainOutputTag, TupleTagList.of(additionalOutputTag)));
 
     // Before fix, tuple.get(mainOutputTag).apply(...) would indirectly trigger
     // tuple.get(additionalOutputTag).finishSpecifyingOutput(), which would crash
     // on a missing coder.
-    tuple.get(mainOutputTag)
+    tuple
+        .get(mainOutputTag)
         .setCoder(TestDummyCoder.of())
-        .apply("Output1", ParDo.of(new DoFn<TestDummy, Integer>() {
-          @ProcessElement
-          public void processElement(ProcessContext context) {
-            context.output(1);
-          }
-        }));
+        .apply(
+            "Output1",
+            ParDo.of(
+                new DoFn<TestDummy, Integer>() {
+                  @ProcessElement
+                  public void processElement(ProcessContext context) {
+                    context.output(1);
+                  }
+                }));
 
     tuple.get(additionalOutputTag).setCoder(TestDummyCoder.of());
 
@@ -1271,7 +1407,12 @@ public class ParDoTest implements Serializable {
   public void testParDoOutputWithTimestamp() {
 
     PCollection<Integer> input =
-        pipeline.apply(Create.of(Arrays.asList(3, 42, 6)));
+        pipeline.apply(
+            Create.of(
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6))));
 
     PCollection<String> output =
         input
@@ -1279,10 +1420,11 @@ public class ParDoTest implements Serializable {
             .apply(ParDo.of(new TestShiftTimestampDoFn<>(Duration.ZERO, Duration.ZERO)))
             .apply(ParDo.of(new TestFormatTimestampDoFn<>()));
 
-    PAssert.that(output).containsInAnyOrder(
-                   "processing: 3, timestamp: 3",
-                   "processing: 42, timestamp: 42",
-                   "processing: 6, timestamp: 6");
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 3, timestamp: 3"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 42, timestamp: 42"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 6, timestamp: 6"));
 
     pipeline.run();
   }
@@ -1292,10 +1434,15 @@ public class ParDoTest implements Serializable {
   public void testParDoTaggedOutputWithTimestamp() {
 
     PCollection<Integer> input =
-        pipeline.apply(Create.of(Arrays.asList(3, 42, 6)));
+        pipeline.apply(
+            Create.of(
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6))));
 
-    final TupleTag<Integer> mainOutputTag = new TupleTag<Integer>("main"){};
-    final TupleTag<Integer> additionalOutputTag = new TupleTag<Integer>("additional"){};
+    final TupleTag<Integer> mainOutputTag = new TupleTag<Integer>("main") {};
+    final TupleTag<Integer> additionalOutputTag = new TupleTag<Integer>("additional") {};
 
     PCollection<String> output =
         input
@@ -1315,10 +1462,11 @@ public class ParDoTest implements Serializable {
             .apply(ParDo.of(new TestShiftTimestampDoFn<>(Duration.ZERO, Duration.ZERO)))
             .apply(ParDo.of(new TestFormatTimestampDoFn<>()));
 
-    PAssert.that(output).containsInAnyOrder(
-                   "processing: 3, timestamp: 3",
-                   "processing: 42, timestamp: 42",
-                   "processing: 6, timestamp: 6");
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 3, timestamp: 3"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 42, timestamp: 42"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 6, timestamp: 6"));
 
     pipeline.run();
   }
@@ -1328,7 +1476,12 @@ public class ParDoTest implements Serializable {
   public void testParDoShiftTimestamp() {
 
     PCollection<Integer> input =
-        pipeline.apply(Create.of(Arrays.asList(3, 42, 6)));
+        pipeline.apply(
+            Create.of(
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6))));
 
     PCollection<String> output =
         input
@@ -1338,10 +1491,11 @@ public class ParDoTest implements Serializable {
                     new TestShiftTimestampDoFn<>(Duration.millis(1000), Duration.millis(-1000))))
             .apply(ParDo.of(new TestFormatTimestampDoFn<>()));
 
-    PAssert.that(output).containsInAnyOrder(
-                   "processing: 3, timestamp: -997",
-                   "processing: 42, timestamp: -958",
-                   "processing: 6, timestamp: -994");
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 3, timestamp: -997"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 42, timestamp: -958"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "processing: 6, timestamp: -994"));
 
     pipeline.run();
   }
@@ -1351,7 +1505,12 @@ public class ParDoTest implements Serializable {
   public void testParDoShiftTimestampInvalid() {
 
     pipeline
-        .apply(Create.of(Arrays.asList(3, 42, 6)))
+        .apply(
+            Create.of(
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6))))
         .apply(ParDo.of(new TestOutputTimestampDoFn<>()))
         .apply(
             ParDo.of(
@@ -1372,7 +1531,12 @@ public class ParDoTest implements Serializable {
   @Category(NeedsRunner.class)
   public void testParDoShiftTimestampInvalidZeroAllowed() {
     pipeline
-        .apply(Create.of(Arrays.asList(3, 42, 6)))
+        .apply(
+            Create.of(
+                Arrays.asList(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6))))
         .apply(ParDo.of(new TestOutputTimestampDoFn<>()))
         .apply(ParDo.of(new TestShiftTimestampDoFn<>(Duration.ZERO, Duration.millis(-1001))))
         .apply(ParDo.of(new TestFormatTimestampDoFn<>()));
@@ -1393,9 +1557,13 @@ public class ParDoTest implements Serializable {
             .apply(
                 Create.of(
                     Arrays.asList(
-                        0L,
-                        BoundedWindow.TIMESTAMP_MIN_VALUE.getMillis(),
-                        GlobalWindow.INSTANCE.maxTimestamp().getMillis())))
+                        TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0L),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            BoundedWindow.TIMESTAMP_MIN_VALUE.getMillis()),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT,
+                            GlobalWindow.INSTANCE.maxTimestamp().getMillis()))))
             .apply("AssignTimestampToValue", ParDo.of(new TestOutputTimestampDoFn<>()))
             .apply(
                 "ReassignToMinimumTimestamp",
@@ -1418,8 +1586,8 @@ public class ParDoTest implements Serializable {
         .satisfies(
             input -> {
               // This element is not shifted backwards in time. It must be present in the output.
-              assertThat(input, hasItem(BoundedWindow.TIMESTAMP_MIN_VALUE.getMillis()));
-              for (Long elem : input) {
+              assertThat(input.getValue(), hasItem(BoundedWindow.TIMESTAMP_MIN_VALUE.getMillis()));
+              for (Long elem : input.getValue()) {
                 // Sanity check the outputs. 0L and the end of the global window are shifted
                 // backwards in time and theoretically could be dropped.
                 assertThat(
@@ -1437,10 +1605,10 @@ public class ParDoTest implements Serializable {
 
   private static class Checker implements SerializableFunction<Iterable<String>, Void> {
     @Override
-    public Void apply(Iterable<String> input) {
+    public TenantAwareValue<Void> apply(TenantAwareValue<Iterable<String>> input) {
       boolean foundElement = false;
       boolean foundFinish = false;
-      for (String str : input) {
+      for (String str : input.getValue()) {
         if (str.equals("elem:1:1")) {
           if (foundElement) {
             throw new AssertionError("Received duplicate element");
@@ -1470,7 +1638,10 @@ public class ParDoTest implements Serializable {
     final FixedWindows windowFn = FixedWindows.of(Duration.millis(1));
     PCollection<String> output =
         pipeline
-            .apply(Create.timestamped(TimestampedValue.of("elem", new Instant(1))))
+            .apply(
+                Create.timestamped(
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, TimestampedValue.of("elem", new Instant(1)))))
             .apply(Window.into(windowFn))
             .apply(
                 ParDo.of(
@@ -1485,7 +1656,8 @@ public class ParDoTest implements Serializable {
                       @FinishBundle
                       public void finishBundle(FinishBundleContext c) {
                         Instant ts = new Instant(3);
-                        c.output("finish", ts, windowFn.assignWindow(ts));
+                        c.output(
+                            TenantAwareValue.NULL_TENANT, "finish", ts, windowFn.assignWindow(ts));
                         System.out.println("Finish: 3");
                       }
                     }))
@@ -1498,39 +1670,43 @@ public class ParDoTest implements Serializable {
 
   @Test
   public void testDoFnDisplayData() {
-    DoFn<String, String> fn = new DoFn<String, String>() {
-      @ProcessElement
-      public void processElement(ProcessContext c) {
-      }
+    DoFn<String, String> fn =
+        new DoFn<String, String>() {
+          @ProcessElement
+          public void processElement(ProcessContext c) {}
 
-      @Override
-      public void populateDisplayData(Builder builder) {
-        builder.add(DisplayData.item("doFnMetadata", "bar"));
-      }
-    };
+          @Override
+          public void populateDisplayData(Builder builder) {
+            builder.add(DisplayData.item("doFnMetadata", "bar"));
+          }
+        };
 
     SingleOutput<String, String> parDo = ParDo.of(fn);
 
     DisplayData displayData = DisplayData.from(parDo);
-    assertThat(displayData, hasDisplayItem(allOf(
-        hasKey("fn"),
-        hasType(DisplayData.Type.JAVA_CLASS),
-        DisplayDataMatchers.hasValue(fn.getClass().getName()))));
+    assertThat(
+        displayData,
+        hasDisplayItem(
+            allOf(
+                hasKey("fn"),
+                hasType(DisplayData.Type.JAVA_CLASS),
+                DisplayDataMatchers.hasValue(fn.getClass().getName()))));
 
     assertThat(displayData, includesDisplayDataFor("fn", fn));
   }
 
   @Test
   public void testDoFnWithContextDisplayData() {
-    DoFn<String, String> fn = new DoFn<String, String>() {
-      @ProcessElement
-      public void proccessElement(ProcessContext c) {}
+    DoFn<String, String> fn =
+        new DoFn<String, String>() {
+          @ProcessElement
+          public void proccessElement(ProcessContext c) {}
 
-      @Override
-      public void populateDisplayData(Builder builder) {
-        builder.add(DisplayData.item("fnMetadata", "foobar"));
-      }
-    };
+          @Override
+          public void populateDisplayData(Builder builder) {
+            builder.add(DisplayData.item("fnMetadata", "foobar"));
+          }
+        };
 
     SingleOutput<String, String> parDo = ParDo.of(fn);
 
@@ -1561,10 +1737,19 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<Integer> output =
-        pipeline.apply(Create.of(KV.of("hello", 42), KV.of("hello", 97), KV.of("hello", 84)))
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84))))
             .apply(ParDo.of(fn));
 
-    PAssert.that(output).containsInAnyOrder(0, 1, 2);
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2));
     pipeline.run();
   }
 
@@ -1594,17 +1779,17 @@ public class ParDoTest implements Serializable {
 
     int numKeys = 50;
     // A big enough list that we can see some deduping
-    List<KV<Integer, Integer>> input = new ArrayList<>();
+    List<TenantAwareValue<KV<Integer, Integer>>> input = new ArrayList<>();
 
     // The output should have no dupes
-    Set<Integer> expectedOutput = new HashSet<>();
+    Set<TenantAwareValue<Integer>> expectedOutput = new HashSet<>();
 
     for (int key = 0; key < numKeys; ++key) {
       int output = 1000 + key;
-      expectedOutput.add(output);
+      expectedOutput.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, output));
 
       for (int i = 0; i < 15; ++i) {
-        input.add(KV.of(key, output));
+        input.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(key, output)));
       }
     }
 
@@ -1624,8 +1809,7 @@ public class ParDoTest implements Serializable {
         new DoFn<String, Integer>() {
 
           @StateId(stateId)
-          private final StateSpec<ValueState<Integer>> intState =
-              StateSpecs.value();
+          private final StateSpec<ValueState<Integer>> intState = StateSpecs.value();
 
           @ProcessElement
           public void processElement(
@@ -1636,7 +1820,13 @@ public class ParDoTest implements Serializable {
     thrown.expectMessage("state");
     thrown.expectMessage("KvCoder");
 
-    pipeline.apply(Create.of("hello", "goodbye", "hello again")).apply(ParDo.of(fn));
+    pipeline
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "hello"),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "goodbye"),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "hello again")))
+        .apply(ParDo.of(fn));
   }
 
   @Test
@@ -1648,8 +1838,7 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<Double, String>, Integer>() {
 
           @StateId(stateId)
-          private final StateSpec<ValueState<Integer>> intState =
-              StateSpecs.value();
+          private final StateSpec<ValueState<Integer>> intState = StateSpecs.value();
 
           @ProcessElement
           public void processElement(
@@ -1661,7 +1850,11 @@ public class ParDoTest implements Serializable {
     thrown.expectMessage("deterministic");
 
     pipeline
-        .apply(Create.of(KV.of(1.0, "hello"), KV.of(5.4, "goodbye"), KV.of(7.2, "hello again")))
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(1.0, "hello")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(5.4, "goodbye")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(7.2, "hello again"))))
         .apply(ParDo.of(fn));
   }
 
@@ -1676,8 +1869,7 @@ public class ParDoTest implements Serializable {
           private final TimerSpec timer = TimerSpecs.timer(TimeDomain.EVENT_TIME);
 
           @ProcessElement
-          public void processElement(
-              ProcessContext c, @TimerId(timerId) Timer timer) {}
+          public void processElement(ProcessContext c, @TimerId(timerId) Timer timer) {}
 
           @OnTimer(timerId)
           public void onTimer() {}
@@ -1687,7 +1879,13 @@ public class ParDoTest implements Serializable {
     thrown.expectMessage("timer");
     thrown.expectMessage("KvCoder");
 
-    pipeline.apply(Create.of("hello", "goodbye", "hello again")).apply(ParDo.of(fn));
+    pipeline
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(1.0, "hello")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(5.4, "goodbye")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(7.2, "hello again"))))
+        .apply((PTransform) ParDo.of(fn));
   }
 
   @Test
@@ -1702,8 +1900,7 @@ public class ParDoTest implements Serializable {
           private final TimerSpec timer = TimerSpecs.timer(TimeDomain.EVENT_TIME);
 
           @ProcessElement
-          public void processElement(
-              ProcessContext c, @TimerId(timerId) Timer timer) {}
+          public void processElement(ProcessContext c, @TimerId(timerId) Timer timer) {}
 
           @OnTimer(timerId)
           public void onTimer() {}
@@ -1714,7 +1911,11 @@ public class ParDoTest implements Serializable {
     thrown.expectMessage("deterministic");
 
     pipeline
-        .apply(Create.of(KV.of(1.0, "hello"), KV.of(5.4, "goodbye"), KV.of(7.2, "hello again")))
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(1.0, "hello")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(5.4, "goodbye")),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(7.2, "hello again"))))
         .apply(ParDo.of(fn));
   }
 
@@ -1729,8 +1930,7 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<String, Integer>, MyInteger>() {
 
           @StateId(stateId)
-          private final StateSpec<ValueState<MyInteger>> intState =
-              StateSpecs.value();
+          private final StateSpec<ValueState<MyInteger>> intState = StateSpecs.value();
 
           @ProcessElement
           public void processElement(
@@ -1742,10 +1942,20 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<MyInteger> output =
-        pipeline.apply(Create.of(KV.of("hello", 42), KV.of("hello", 97), KV.of("hello", 84)))
-            .apply(ParDo.of(fn)).setCoder(myIntegerCoder);
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84))))
+            .apply(ParDo.of(fn))
+            .setCoder(myIntegerCoder);
 
-    PAssert.that(output).containsInAnyOrder(new MyInteger(0), new MyInteger(1), new MyInteger(2));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new MyInteger(0)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new MyInteger(1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new MyInteger(2)));
     pipeline.run();
   }
 
@@ -1759,8 +1969,7 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<String, Integer>, MyInteger>() {
 
           @StateId(stateId)
-          private final StateSpec<ValueState<MyInteger>> intState =
-              StateSpecs.value();
+          private final StateSpec<ValueState<MyInteger>> intState = StateSpecs.value();
 
           @ProcessElement
           public void processElement(
@@ -1774,8 +1983,14 @@ public class ParDoTest implements Serializable {
     thrown.expect(RuntimeException.class);
     thrown.expectMessage("Unable to infer a coder for ValueState and no Coder was specified.");
 
-    pipeline.apply(Create.of(KV.of("hello", 42), KV.of("hello", 97), KV.of("hello", 84)))
-        .apply(ParDo.of(fn)).setCoder(myIntegerCoder);
+    pipeline
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84))))
+        .apply(ParDo.of(fn))
+        .setCoder(myIntegerCoder);
 
     pipeline.run();
   }
@@ -1790,8 +2005,7 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<String, MyInteger>, MyInteger>() {
 
           @StateId(stateId)
-          private final StateSpec<ValueState<MyInteger>> intState =
-              StateSpecs.value();
+          private final StateSpec<ValueState<MyInteger>> intState = StateSpecs.value();
 
           @ProcessElement
           public void processElement(
@@ -1802,11 +2016,18 @@ public class ParDoTest implements Serializable {
           }
         };
 
-        pipeline
-            .apply(Create.of(KV.of("hello", new MyInteger(42)),
-                KV.of("hello", new MyInteger(97)), KV.of("hello", new MyInteger(84)))
+    pipeline
+        .apply(
+            Create.of(
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, KV.of("hello", new MyInteger(42))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, KV.of("hello", new MyInteger(97))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, KV.of("hello", new MyInteger(84))))
                 .withCoder(KvCoder.of(StringUtf8Coder.of(), myIntegerCoder)))
-            .apply(ParDo.of(fn)).setCoder(myIntegerCoder);
+        .apply(ParDo.of(fn))
+        .setCoder(myIntegerCoder);
 
     pipeline.run();
   }
@@ -1822,24 +2043,30 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<String, Integer>, List<MyInteger>>() {
 
           @StateId(stateId)
-          private final StateSpec<ValueState<List<MyInteger>>> intState =
-              StateSpecs.value();
+          private final StateSpec<ValueState<List<MyInteger>>> intState = StateSpecs.value();
 
           @ProcessElement
           public void processElement(
               ProcessContext c, @StateId(stateId) ValueState<List<MyInteger>> state) {
             MyInteger myInteger = new MyInteger(c.element().getValue());
             List<MyInteger> currentValue = state.read();
-            List<MyInteger> newValue = currentValue != null
-                ? ImmutableList.<MyInteger>builder().addAll(currentValue).add(myInteger).build()
-                : Collections.singletonList(myInteger);
+            List<MyInteger> newValue =
+                currentValue != null
+                    ? ImmutableList.<MyInteger>builder().addAll(currentValue).add(myInteger).build()
+                    : Collections.singletonList(myInteger);
             c.output(newValue);
             state.write(newValue);
           }
         };
 
-    pipeline.apply(Create.of(KV.of("hello", 42), KV.of("hello", 97), KV.of("hello", 84)))
-        .apply(ParDo.of(fn)).setCoder(ListCoder.of(myIntegerCoder));
+    pipeline
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84))))
+        .apply(ParDo.of(fn))
+        .setCoder(ListCoder.of(myIntegerCoder));
 
     pipeline.run();
   }
@@ -1873,24 +2100,43 @@ public class ParDoTest implements Serializable {
             .apply(
                 Create.timestamped(
                     // first window
-                    TimestampedValue.of(KV.of("hello", 7), new Instant(1)),
-                    TimestampedValue.of(KV.of("hello", 14), new Instant(2)),
-                    TimestampedValue.of(KV.of("hello", 21), new Instant(3)),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("hello", 7), new Instant(1))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("hello", 14), new Instant(2))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("hello", 21), new Instant(3))),
 
                     // second window
-                    TimestampedValue.of(KV.of("hello", 28), new Instant(11)),
-                    TimestampedValue.of(KV.of("hello", 35), new Instant(13))))
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("hello", 28), new Instant(11))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("hello", 35), new Instant(13)))))
             .apply(Window.into(FixedWindows.of(Duration.millis(10))))
             .apply("Stateful ParDo", ParDo.of(fn));
 
-    PAssert.that(output).inWindow(firstWindow).containsInAnyOrder(0, 1, 2);
-    PAssert.that(output).inWindow(secondWindow).containsInAnyOrder(0, 1);
+    PAssert.that(output)
+        .inWindow(firstWindow)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2));
+    PAssert.that(output)
+        .inWindow(secondWindow)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1));
     pipeline.run();
   }
 
   /**
-   * Tests that there is no state bleeding between adjacent stateful {@link ParDo} transforms,
-   * which may (or may not) be executed in similar contexts after runner optimizations.
+   * Tests that there is no state bleeding between adjacent stateful {@link ParDo} transforms, which
+   * may (or may not) be executed in similar contexts after runner optimizations.
    */
   @Test
   @Category({ValidatesRunner.class, UsesStatefulParDo.class})
@@ -1930,15 +2176,26 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<KV<String, Integer>> intermediate =
-        pipeline.apply(Create.of(KV.of("hello", 42), KV.of("hello", 97), KV.of("hello", 84)))
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84))))
             .apply("First stateful ParDo", ParDo.of(fn));
 
-    PCollection<Integer> output =
-            intermediate.apply("Second stateful ParDo", ParDo.of(fn2));
+    PCollection<Integer> output = intermediate.apply("Second stateful ParDo", ParDo.of(fn2));
 
     PAssert.that(intermediate)
-        .containsInAnyOrder(KV.of("sizzle", 0), KV.of("sizzle", 1), KV.of("sizzle", 2));
-    PAssert.that(output).containsInAnyOrder(13, 26, 39);
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("sizzle", 0)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("sizzle", 1)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("sizzle", 2)));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 13),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 26),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 39));
     pipeline.run();
   }
 
@@ -1971,24 +2228,33 @@ public class ParDoTest implements Serializable {
         };
 
     PCollectionTuple output =
-        pipeline.apply(
+        pipeline
+            .apply(
                 Create.of(
-                    KV.of("hello", 42),
-                    KV.of("hello", 97),
-                    KV.of("hello", 84),
-                    KV.of("goodbye", 33),
-                    KV.of("hello", 859),
-                    KV.of("goodbye", 83945)))
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("goodbye", 33)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 859)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("goodbye", 83945))))
             .apply(ParDo.of(fn).withOutputTags(evenTag, TupleTagList.of(oddTag)));
 
     PCollection<Integer> evens = output.get(evenTag);
     PCollection<Integer> odds = output.get(oddTag);
 
     // There are 0 and 2 from "hello" and just 0 from "goodbye"
-    PAssert.that(evens).containsInAnyOrder(0, 2, 0);
+    PAssert.that(evens)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0));
 
     // There are 1 and 3 from "hello" and just "1" from "goodbye"
-    PAssert.that(odds).containsInAnyOrder(1, 3, 1);
+    PAssert.that(odds)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1));
     pipeline.run();
   }
 
@@ -2001,12 +2267,10 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<String, Integer>, List<Integer>>() {
 
           @StateId(stateId)
-          private final StateSpec<BagState<Integer>> bufferState =
-              StateSpecs.bag(VarIntCoder.of());
+          private final StateSpec<BagState<Integer>> bufferState = StateSpecs.bag(VarIntCoder.of());
 
           @ProcessElement
-          public void processElement(
-              ProcessContext c, @StateId(stateId) BagState<Integer> state) {
+          public void processElement(ProcessContext c, @StateId(stateId) BagState<Integer> state) {
             ReadableState<Boolean> isEmpty = state.isEmpty();
             state.add(c.element().getValue());
             assertFalse(isEmpty.read());
@@ -2025,12 +2289,18 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<List<Integer>> output =
-        pipeline.apply(
+        pipeline
+            .apply(
                 Create.of(
-                    KV.of("hello", 97), KV.of("hello", 42), KV.of("hello", 84), KV.of("hello", 12)))
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 12))))
             .apply(ParDo.of(fn));
 
-    PAssert.that(output).containsInAnyOrder(Lists.newArrayList(12, 42, 84, 97));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, Lists.newArrayList(12, 42, 84, 97)));
     pipeline.run();
   }
 
@@ -2045,8 +2315,7 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<String, Integer>, List<MyInteger>>() {
 
           @StateId(stateId)
-          private final StateSpec<BagState<MyInteger>> bufferState =
-              StateSpecs.bag();
+          private final StateSpec<BagState<MyInteger>> bufferState = StateSpecs.bag();
 
           @ProcessElement
           public void processElement(
@@ -2062,13 +2331,22 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<List<MyInteger>> output =
-        pipeline.apply(
-            Create.of(
-                KV.of("hello", 97), KV.of("hello", 42), KV.of("hello", 84), KV.of("hello", 12)))
-            .apply(ParDo.of(fn)).setCoder(ListCoder.of(myIntegerCoder));
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 12))))
+            .apply(ParDo.of(fn))
+            .setCoder(ListCoder.of(myIntegerCoder));
 
-    PAssert.that(output).containsInAnyOrder(Lists.newArrayList(new MyInteger(12), new MyInteger(42),
-        new MyInteger(84), new MyInteger(97)));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                Lists.newArrayList(
+                    new MyInteger(12), new MyInteger(42), new MyInteger(84), new MyInteger(97))));
 
     pipeline.run();
   }
@@ -2083,8 +2361,7 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<String, Integer>, List<MyInteger>>() {
 
           @StateId(stateId)
-          private final StateSpec<BagState<MyInteger>> bufferState =
-              StateSpecs.bag();
+          private final StateSpec<BagState<MyInteger>> bufferState = StateSpecs.bag();
 
           @ProcessElement
           public void processElement(
@@ -2102,10 +2379,15 @@ public class ParDoTest implements Serializable {
     thrown.expect(RuntimeException.class);
     thrown.expectMessage("Unable to infer a coder for BagState and no Coder was specified.");
 
-    pipeline.apply(
-        Create.of(
-            KV.of("hello", 97), KV.of("hello", 42), KV.of("hello", 84), KV.of("hello", 12)))
-        .apply(ParDo.of(fn)).setCoder(ListCoder.of(myIntegerCoder));
+    pipeline
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 12))))
+        .apply(ParDo.of(fn))
+        .setCoder(ListCoder.of(myIntegerCoder));
 
     pipeline.run();
   }
@@ -2120,19 +2402,17 @@ public class ParDoTest implements Serializable {
         new DoFn<KV<String, Integer>, Set<Integer>>() {
 
           @StateId(stateId)
-          private final StateSpec<SetState<Integer>> setState =
-              StateSpecs.set(VarIntCoder.of());
+          private final StateSpec<SetState<Integer>> setState = StateSpecs.set(VarIntCoder.of());
+
           @StateId(countStateId)
-          private final StateSpec<CombiningState<Integer, int[], Integer>>
-              countState = StateSpecs.combiningFromInputInternal(VarIntCoder.of(),
-              Sum.ofIntegers());
+          private final StateSpec<CombiningState<Integer, int[], Integer>> countState =
+              StateSpecs.combiningFromInputInternal(VarIntCoder.of(), Sum.ofIntegers());
 
           @ProcessElement
           public void processElement(
               ProcessContext c,
               @StateId(stateId) SetState<Integer> state,
-              @StateId(countStateId) CombiningState<Integer, int[], Integer>
-                  count) {
+              @StateId(countStateId) CombiningState<Integer, int[], Integer> count) {
             ReadableState<Boolean> isEmpty = state.isEmpty();
             state.add(c.element().getValue());
             assertFalse(isEmpty.read());
@@ -2151,12 +2431,18 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<Set<Integer>> output =
-        pipeline.apply(
-            Create.of(
-                KV.of("hello", 97), KV.of("hello", 42), KV.of("hello", 42), KV.of("hello", 12)))
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 12))))
             .apply(ParDo.of(fn));
 
-    PAssert.that(output).containsInAnyOrder(Sets.newHashSet(97, 42, 12));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, Sets.newHashSet(97, 42, 12)));
     pipeline.run();
   }
 
@@ -2175,9 +2461,8 @@ public class ParDoTest implements Serializable {
           private final StateSpec<SetState<MyInteger>> setState = StateSpecs.set();
 
           @StateId(countStateId)
-          private final StateSpec<CombiningState<Integer, int[], Integer>>
-              countState = StateSpecs.combiningFromInputInternal(VarIntCoder.of(),
-              Sum.ofIntegers());
+          private final StateSpec<CombiningState<Integer, int[], Integer>> countState =
+              StateSpecs.combiningFromInputInternal(VarIntCoder.of(), Sum.ofIntegers());
 
           @ProcessElement
           public void processElement(
@@ -2194,13 +2479,21 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<Set<MyInteger>> output =
-        pipeline.apply(
-            Create.of(
-                KV.of("hello", 97), KV.of("hello", 42), KV.of("hello", 42), KV.of("hello", 12)))
-            .apply(ParDo.of(fn)).setCoder(SetCoder.of(myIntegerCoder));
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 12))))
+            .apply(ParDo.of(fn))
+            .setCoder(SetCoder.of(myIntegerCoder));
 
-    PAssert.that(output).containsInAnyOrder(
-        Sets.newHashSet(new MyInteger(97), new MyInteger(42), new MyInteger(12)));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                Sets.newHashSet(new MyInteger(97), new MyInteger(42), new MyInteger(12))));
     pipeline.run();
   }
 
@@ -2218,9 +2511,8 @@ public class ParDoTest implements Serializable {
           private final StateSpec<SetState<MyInteger>> setState = StateSpecs.set();
 
           @StateId(countStateId)
-          private final StateSpec<CombiningState<Integer, int[], Integer>>
-              countState = StateSpecs.combiningFromInputInternal(VarIntCoder.of(),
-              Sum.ofIntegers());
+          private final StateSpec<CombiningState<Integer, int[], Integer>> countState =
+              StateSpecs.combiningFromInputInternal(VarIntCoder.of(), Sum.ofIntegers());
 
           @ProcessElement
           public void processElement(
@@ -2239,10 +2531,15 @@ public class ParDoTest implements Serializable {
     thrown.expect(RuntimeException.class);
     thrown.expectMessage("Unable to infer a coder for SetState and no Coder was specified.");
 
-    pipeline.apply(
-        Create.of(
-            KV.of("hello", 97), KV.of("hello", 42), KV.of("hello", 42), KV.of("hello", 12)))
-        .apply(ParDo.of(fn)).setCoder(SetCoder.of(myIntegerCoder));
+    pipeline
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 12))))
+        .apply(ParDo.of(fn))
+        .setCoder(SetCoder.of(myIntegerCoder));
 
     pipeline.run();
   }
@@ -2259,16 +2556,16 @@ public class ParDoTest implements Serializable {
           @StateId(stateId)
           private final StateSpec<MapState<String, Integer>> mapState =
               StateSpecs.map(StringUtf8Coder.of(), VarIntCoder.of());
+
           @StateId(countStateId)
-          private final StateSpec<CombiningState<Integer, int[], Integer>>
-              countState = StateSpecs.combiningFromInputInternal(VarIntCoder.of(),
-              Sum.ofIntegers());
+          private final StateSpec<CombiningState<Integer, int[], Integer>> countState =
+              StateSpecs.combiningFromInputInternal(VarIntCoder.of(), Sum.ofIntegers());
 
           @ProcessElement
           public void processElement(
-              ProcessContext c, @StateId(stateId) MapState<String, Integer> state,
-              @StateId(countStateId) CombiningState<Integer, int[], Integer>
-                  count) {
+              ProcessContext c,
+              @StateId(stateId) MapState<String, Integer> state,
+              @StateId(countStateId) CombiningState<Integer, int[], Integer> count) {
             KV<String, Integer> value = c.element().getValue();
             ReadableState<Iterable<Entry<String, Integer>>> entriesView = state.entries();
             state.put(value.getKey(), value.getValue());
@@ -2290,13 +2587,24 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<KV<String, Integer>> output =
-        pipeline.apply(
-            Create.of(
-                KV.of("hello", KV.of("a", 97)), KV.of("hello", KV.of("b", 42)),
-                KV.of("hello", KV.of("b", 42)), KV.of("hello", KV.of("c", 12))))
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("a", 97))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("b", 42))),
+                    TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("b", 42))),
+                        TenantAwareValue.of(
+                            TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("c", 12)))))
             .apply(ParDo.of(fn));
 
-    PAssert.that(output).containsInAnyOrder(KV.of("a", 97), KV.of("b", 42), KV.of("c", 12));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", 97)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", 42)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("c", 12)));
     pipeline.run();
   }
 
@@ -2315,15 +2623,14 @@ public class ParDoTest implements Serializable {
           private final StateSpec<MapState<String, MyInteger>> mapState = StateSpecs.map();
 
           @StateId(countStateId)
-          private final StateSpec<CombiningState<Integer, int[], Integer>>
-              countState = StateSpecs.combiningFromInputInternal(VarIntCoder.of(),
-              Sum.ofIntegers());
+          private final StateSpec<CombiningState<Integer, int[], Integer>> countState =
+              StateSpecs.combiningFromInputInternal(VarIntCoder.of(), Sum.ofIntegers());
 
           @ProcessElement
           public void processElement(
-              ProcessContext c, @StateId(stateId) MapState<String, MyInteger> state,
-              @StateId(countStateId) CombiningState<Integer, int[], Integer>
-                  count) {
+              ProcessContext c,
+              @StateId(stateId) MapState<String, MyInteger> state,
+              @StateId(countStateId) CombiningState<Integer, int[], Integer> count) {
             KV<String, Integer> value = c.element().getValue();
             state.put(value.getKey(), new MyInteger(value.getValue()));
             count.add(1);
@@ -2337,14 +2644,25 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<KV<String, MyInteger>> output =
-        pipeline.apply(
-            Create.of(
-                KV.of("hello", KV.of("a", 97)), KV.of("hello", KV.of("b", 42)),
-                KV.of("hello", KV.of("b", 42)), KV.of("hello", KV.of("c", 12))))
-            .apply(ParDo.of(fn)).setCoder(KvCoder.of(StringUtf8Coder.of(), myIntegerCoder));
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("a", 97))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("b", 42))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("b", 42))),
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("c", 12)))))
+            .apply(ParDo.of(fn))
+            .setCoder(KvCoder.of(StringUtf8Coder.of(), myIntegerCoder));
 
-    PAssert.that(output).containsInAnyOrder(KV.of("a", new MyInteger(97)),
-        KV.of("b", new MyInteger(42)), KV.of("c", new MyInteger(12)));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("a", new MyInteger(97))),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("b", new MyInteger(42))),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("c", new MyInteger(12))));
     pipeline.run();
   }
 
@@ -2362,15 +2680,14 @@ public class ParDoTest implements Serializable {
           private final StateSpec<MapState<String, MyInteger>> mapState = StateSpecs.map();
 
           @StateId(countStateId)
-          private final StateSpec<CombiningState<Integer, int[], Integer>>
-              countState = StateSpecs.combiningFromInputInternal(VarIntCoder.of(),
-              Sum.ofIntegers());
+          private final StateSpec<CombiningState<Integer, int[], Integer>> countState =
+              StateSpecs.combiningFromInputInternal(VarIntCoder.of(), Sum.ofIntegers());
 
           @ProcessElement
           public void processElement(
-              ProcessContext c, @StateId(stateId) MapState<String, MyInteger> state,
-              @StateId(countStateId) CombiningState<Integer, int[], Integer>
-                  count) {
+              ProcessContext c,
+              @StateId(stateId) MapState<String, MyInteger> state,
+              @StateId(countStateId) CombiningState<Integer, int[], Integer> count) {
             KV<String, Integer> value = c.element().getValue();
             state.put(value.getKey(), new MyInteger(value.getValue()));
             count.add(1);
@@ -2386,11 +2703,15 @@ public class ParDoTest implements Serializable {
     thrown.expect(RuntimeException.class);
     thrown.expectMessage("Unable to infer a coder for MapState and no Coder was specified.");
 
-    pipeline.apply(
-        Create.of(
-            KV.of("hello", KV.of("a", 97)), KV.of("hello", KV.of("b", 42)),
-            KV.of("hello", KV.of("b", 42)), KV.of("hello", KV.of("c", 12))))
-        .apply(ParDo.of(fn)).setCoder(KvCoder.of(StringUtf8Coder.of(), myIntegerCoder));
+    pipeline
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("a", 97))),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("b", 42))),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("b", 42))),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", KV.of("c", 12)))))
+        .apply(ParDo.of(fn))
+        .setCoder(KvCoder.of(StringUtf8Coder.of(), myIntegerCoder));
 
     pipeline.run();
   }
@@ -2423,11 +2744,16 @@ public class ParDoTest implements Serializable {
 
     PCollection<String> output =
         pipeline
-            .apply(Create.of(KV.of("hello", 0.3), KV.of("hello", 0.6), KV.of("hello", 0.6)))
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 0.3)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 0.6)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 0.6))))
             .apply(ParDo.of(fn));
 
     // There should only be one moment at which the average is exactly 0.5
-    PAssert.that(output).containsInAnyOrder("right on");
+    PAssert.that(output)
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "right on"));
     pipeline.run();
   }
 
@@ -2447,27 +2773,35 @@ public class ParDoTest implements Serializable {
               StateSpecs.combining(
                   new Combine.CombineFn<Integer, MyInteger, Integer>() {
                     @Override
-                    public MyInteger createAccumulator() {
-                      return new MyInteger(0);
+                    public TenantAwareValue<MyInteger> createAccumulator() {
+                      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new MyInteger(0));
                     }
 
                     @Override
-                    public MyInteger addInput(MyInteger accumulator, Integer input) {
-                      return new MyInteger(accumulator.getValue() + input);
+                    public TenantAwareValue<MyInteger> addInput(
+                        TenantAwareValue<MyInteger> accumulator, TenantAwareValue<Integer> input) {
+                      return TenantAwareValue.of(
+                          input.getTenantId(),
+                          new MyInteger(accumulator.getValue().getValue() + input.getValue()));
                     }
 
                     @Override
-                    public MyInteger mergeAccumulators(Iterable<MyInteger> accumulators) {
+                    public TenantAwareValue<MyInteger> mergeAccumulators(
+                        Iterable<TenantAwareValue<MyInteger>> accumulators) {
                       int newValue = 0;
-                      for (MyInteger myInteger : accumulators) {
-                        newValue += myInteger.getValue();
+                      String tenantId = TenantAwareValue.NULL_TENANT;
+                      for (TenantAwareValue<MyInteger> myInteger : accumulators) {
+                        tenantId = myInteger.getTenantId();
+                        newValue += myInteger.getValue().getValue();
                       }
-                      return new MyInteger(newValue);
+                      return TenantAwareValue.of(tenantId, new MyInteger(newValue));
                     }
 
                     @Override
-                    public Integer extractOutput(MyInteger accumulator) {
-                      return accumulator.getValue();
+                    public TenantAwareValue<Integer> extractOutput(
+                        TenantAwareValue<MyInteger> accumulator) {
+                      return TenantAwareValue.of(
+                          accumulator.getTenantId(), accumulator.getValue().getValue());
                     }
                   });
 
@@ -2485,11 +2819,16 @@ public class ParDoTest implements Serializable {
 
     PCollection<String> output =
         pipeline
-            .apply(Create.of(KV.of("hello", 3), KV.of("hello", 6), KV.of("hello", 7)))
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 3)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 6)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 7))))
             .apply(ParDo.of(fn));
 
     // There should only be one moment at which the average is exactly 16
-    PAssert.that(output).containsInAnyOrder("right on");
+    PAssert.that(output)
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "right on"));
     pipeline.run();
   }
 
@@ -2507,27 +2846,35 @@ public class ParDoTest implements Serializable {
               StateSpecs.combining(
                   new Combine.CombineFn<Integer, MyInteger, Integer>() {
                     @Override
-                    public MyInteger createAccumulator() {
-                      return new MyInteger(0);
+                    public TenantAwareValue<MyInteger> createAccumulator() {
+                      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new MyInteger(0));
                     }
 
                     @Override
-                    public MyInteger addInput(MyInteger accumulator, Integer input) {
-                      return new MyInteger(accumulator.getValue() + input);
+                    public TenantAwareValue<MyInteger> addInput(
+                        TenantAwareValue<MyInteger> accumulator, TenantAwareValue<Integer> input) {
+                      return TenantAwareValue.of(
+                          input.getTenantId(),
+                          new MyInteger(accumulator.getValue().getValue() + input.getValue()));
                     }
 
                     @Override
-                    public MyInteger mergeAccumulators(Iterable<MyInteger> accumulators) {
+                    public TenantAwareValue<MyInteger> mergeAccumulators(
+                        Iterable<TenantAwareValue<MyInteger>> accumulators) {
                       int newValue = 0;
-                      for (MyInteger myInteger : accumulators) {
-                        newValue += myInteger.getValue();
+                      String tenantId = TenantAwareValue.NULL_TENANT;
+                      for (TenantAwareValue<MyInteger> myInteger : accumulators) {
+                        tenantId = myInteger.getTenantId();
+                        newValue += myInteger.getValue().getValue();
                       }
-                      return new MyInteger(newValue);
+                      return TenantAwareValue.of(tenantId, new MyInteger(newValue));
                     }
 
                     @Override
-                    public Integer extractOutput(MyInteger accumulator) {
-                      return accumulator.getValue();
+                    public TenantAwareValue<Integer> extractOutput(
+                        TenantAwareValue<MyInteger> accumulator) {
+                      return TenantAwareValue.of(
+                          accumulator.getTenantId(), accumulator.getValue().getValue());
                     }
                   });
 
@@ -2547,7 +2894,11 @@ public class ParDoTest implements Serializable {
     thrown.expectMessage("Unable to infer a coder for CombiningState and no Coder was specified.");
 
     pipeline
-        .apply(Create.of(KV.of("hello", 3), KV.of("hello", 6), KV.of("hello", 7)))
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 3)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 6)),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 7))))
         .apply(ParDo.of(fn));
 
     pipeline.run();
@@ -2567,8 +2918,8 @@ public class ParDoTest implements Serializable {
               StateSpecs.combining(Sum.ofIntegers());
 
           @ProcessElement
-          public void processElement(ProcessContext c,
-              @StateId(stateId) GroupingState<Integer, Integer> state) {
+          public void processElement(
+              ProcessContext c, @StateId(stateId) GroupingState<Integer, Integer> state) {
             state.add(c.element().getValue());
             Integer currentValue = state.read();
             if (currentValue == EXPECTED_SUM) {
@@ -2579,11 +2930,16 @@ public class ParDoTest implements Serializable {
 
     PCollection<String> output =
         pipeline
-            .apply(Create.of(KV.of(123, 4), KV.of(123, 7), KV.of(123, -3)))
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(123, 4)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(123, 7)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(123, -3))))
             .apply(ParDo.of(fn));
 
     // There should only be one moment at which the sum is exactly 8
-    PAssert.that(output).containsInAnyOrder("right on");
+    PAssert.that(output)
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "right on"));
     pipeline.run();
   }
 
@@ -2592,19 +2948,24 @@ public class ParDoTest implements Serializable {
   public void testBagStateSideInput() {
 
     final PCollectionView<List<Integer>> listView =
-        pipeline.apply("Create list for side input", Create.of(2, 1, 0)).apply(View.asList());
+        pipeline
+            .apply(
+                "Create list for side input",
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0)))
+            .apply(View.asList());
 
     final String stateId = "foo";
     DoFn<KV<String, Integer>, List<Integer>> fn =
         new DoFn<KV<String, Integer>, List<Integer>>() {
 
           @StateId(stateId)
-          private final StateSpec<BagState<Integer>> bufferState =
-              StateSpecs.bag(VarIntCoder.of());
+          private final StateSpec<BagState<Integer>> bufferState = StateSpecs.bag(VarIntCoder.of());
 
           @ProcessElement
-          public void processElement(
-              ProcessContext c, @StateId(stateId) BagState<Integer> state) {
+          public void processElement(ProcessContext c, @StateId(stateId) BagState<Integer> state) {
             state.add(c.element().getValue());
             Iterable<Integer> currentValue = state.read();
             if (Iterables.size(currentValue) >= 4) {
@@ -2620,15 +2981,20 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<List<Integer>> output =
-        pipeline.apply(
+        pipeline
+            .apply(
                 "Create main input",
                 Create.of(
-                    KV.of("hello", 97), KV.of("hello", 42), KV.of("hello", 84), KV.of("hello", 12)))
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 97)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 84)),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 12))))
             .apply(ParDo.of(fn).withSideInputs(listView));
 
-    PAssert.that(output).containsInAnyOrder(
-        Lists.newArrayList(12, 42, 84, 97),
-        Lists.newArrayList(0, 1, 2));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, Lists.newArrayList(12, 42, 84, 97)),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, Lists.newArrayList(0, 1, 2)));
     pipeline.run();
   }
 
@@ -2638,11 +3004,11 @@ public class ParDoTest implements Serializable {
    * <p>This test relies on two properties:
    *
    * <ol>
-   * <li>A timer that is set on time should always get a chance to fire. For this to be true, timers
-   *     per-key-and-window must be delivered in order so the timer is not wiped out until the
-   *     window is expired by the runner.
-   * <li>A {@link Create} transform sends its elements on time, and later advances the watermark to
-   *     infinity
+   *   <li>A timer that is set on time should always get a chance to fire. For this to be true,
+   *       timers per-key-and-window must be delivered in order so the timer is not wiped out until
+   *       the window is expired by the runner.
+   *   <li>A {@link Create} transform sends its elements on time, and later advances the watermark
+   *       to infinity
    * </ol>
    *
    * <p>Note that {@link TestStream} is not applicable because it requires very special runner hooks
@@ -2671,8 +3037,14 @@ public class ParDoTest implements Serializable {
           }
         };
 
-    PCollection<Integer> output = pipeline.apply(Create.of(KV.of("hello", 37))).apply(ParDo.of(fn));
-    PAssert.that(output).containsInAnyOrder(3, 42);
+    PCollection<Integer> output =
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37))))
+            .apply(ParDo.of(fn));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42));
     pipeline.run();
   }
 
@@ -2706,10 +3078,13 @@ public class ParDoTest implements Serializable {
 
     PCollection<Integer> output =
         pipeline
-            .apply(Create.of(KV.of("hello", 37)))
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37))))
             .apply(GroupByKey.create())
             .apply(ParDo.of(fn));
-    PAssert.that(output).containsInAnyOrder(3, 42);
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42));
     pipeline.run();
   }
 
@@ -2737,9 +3112,16 @@ public class ParDoTest implements Serializable {
         };
 
     PCollection<KV<Integer, Instant>> output =
-        pipeline.apply(Create.of(KV.of("hello", 37))).apply(ParDo.of(fn));
-    PAssert.that(output).containsInAnyOrder(KV.of(3, BoundedWindow.TIMESTAMP_MIN_VALUE),
-        KV.of(42, BoundedWindow.TIMESTAMP_MIN_VALUE.plus(1774)));
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37))))
+            .apply(ParDo.of(fn));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT, KV.of(3, BoundedWindow.TIMESTAMP_MIN_VALUE)),
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                KV.of(42, BoundedWindow.TIMESTAMP_MIN_VALUE.plus(1774))));
     pipeline.run();
   }
 
@@ -2773,17 +3155,29 @@ public class ParDoTest implements Serializable {
         SlidingWindows.of(Duration.standardMinutes(3)).every(Duration.standardMinutes(1));
     PCollection<BoundedWindow> output =
         pipeline
-            .apply(Create.timestamped(TimestampedValue.of(KV.of("hello", 24), new Instant(0L))))
+            .apply(
+                Create.timestamped(
+                    TenantAwareValue.of(
+                        TenantAwareValue.NULL_TENANT,
+                        TimestampedValue.of(KV.of("hello", 24), new Instant(0L)))))
             .apply(Window.into(windowing))
             .apply(ParDo.of(fn));
 
     PAssert.that(output)
         .containsInAnyOrder(
-            new IntervalWindow(new Instant(0), Duration.standardMinutes(3)),
-            new IntervalWindow(
-                new Instant(0).minus(Duration.standardMinutes(1)), Duration.standardMinutes(3)),
-            new IntervalWindow(
-                new Instant(0).minus(Duration.standardMinutes(2)), Duration.standardMinutes(3)));
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                new IntervalWindow(new Instant(0), Duration.standardMinutes(3))),
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                new IntervalWindow(
+                    new Instant(0).minus(Duration.standardMinutes(1)),
+                    Duration.standardMinutes(3))),
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                new IntervalWindow(
+                    new Instant(0).minus(Duration.standardMinutes(2)),
+                    Duration.standardMinutes(3))));
     pipeline.run();
   }
 
@@ -2815,8 +3209,14 @@ public class ParDoTest implements Serializable {
           }
         };
 
-    PCollection<Integer> output = pipeline.apply(Create.of(KV.of("hello", 37))).apply(ParDo.of(fn));
-    PAssert.that(output).containsInAnyOrder(3, 42);
+    PCollection<Integer> output =
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37))))
+            .apply(ParDo.of(fn));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42));
     pipeline.run();
   }
 
@@ -2859,9 +3259,18 @@ public class ParDoTest implements Serializable {
           }
         };
 
-    PCollection<Integer> output = pipeline.apply(Create.of(KV.of("hello", 42))).apply(ParDo.of(fn));
+    PCollection<Integer> output =
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 42))))
+            .apply(ParDo.of(fn));
 
-    PAssert.that(output).containsInAnyOrder(0, 1, 2, 3, 4);
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4));
     pipeline.run();
   }
 
@@ -2908,27 +3317,25 @@ public class ParDoTest implements Serializable {
 
     // Enough keys that we exercise interesting code paths
     int numKeys = 50;
-    List<KV<String, Integer>> input = new ArrayList<>();
-    List<KV<String, Integer>> expectedOutput = new ArrayList<>();
+    List<TenantAwareValue<KV<String, Integer>>> input = new ArrayList<>();
+    List<TenantAwareValue<KV<String, Integer>>> expectedOutput = new ArrayList<>();
 
     for (Integer key = 0; key < numKeys; ++key) {
       // Each key should have just one final output at GC time
-      expectedOutput.add(KV.of(key.toString(), timerOutput));
+      expectedOutput.add(
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(key.toString(), timerOutput)));
 
       for (int i = 0; i < 15; ++i) {
         // Each input should be output with the offset added
-        input.add(KV.of(key.toString(), i));
-        expectedOutput.add(KV.of(key.toString(), i + offset));
+        input.add(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(key.toString(), i)));
+        expectedOutput.add(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(key.toString(), i + offset)));
       }
     }
 
     Collections.shuffle(input);
 
-    PCollection<KV<String, Integer>> output =
-        pipeline
-            .apply(
-                Create.of(input))
-            .apply(ParDo.of(fn));
+    PCollection<KV<String, Integer>> output = pipeline.apply(Create.of(input)).apply(ParDo.of(fn));
     PAssert.that(output).containsInAnyOrder(expectedOutput);
     pipeline.run();
   }
@@ -2953,7 +3360,10 @@ public class ParDoTest implements Serializable {
           public void onTimer(OnTimerContext context) {}
         };
 
-    PCollection<Integer> output = pipeline.apply(Create.of(KV.of("hello", 37))).apply(ParDo.of(fn));
+    PCollection<Integer> output =
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37))))
+            .apply(ParDo.of(fn));
     thrown.expect(RuntimeException.class);
     // Note that runners can reasonably vary their message - this matcher should be flexible
     // and can be evolved.
@@ -2983,7 +3393,10 @@ public class ParDoTest implements Serializable {
           public void onTimer(OnTimerContext context) {}
         };
 
-    PCollection<Integer> output = pipeline.apply(Create.of(KV.of("hello", 37))).apply(ParDo.of(fn));
+    PCollection<Integer> output =
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37))))
+            .apply(ParDo.of(fn));
     thrown.expect(RuntimeException.class);
     // Note that runners can reasonably vary their message - this matcher should be flexible
     // and can be evolved.
@@ -3017,12 +3430,15 @@ public class ParDoTest implements Serializable {
 
     TestStream<KV<String, Integer>> stream =
         TestStream.create(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of()))
-            .addElements(KV.of("hello", 37))
+            .addElements(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37)))
             .advanceProcessingTime(Duration.standardSeconds(2))
             .advanceWatermarkToInfinity();
 
     PCollection<Integer> output = pipeline.apply(stream).apply(ParDo.of(fn));
-    PAssert.that(output).containsInAnyOrder(3, 42);
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42));
     pipeline.run();
   }
 
@@ -3049,15 +3465,18 @@ public class ParDoTest implements Serializable {
           }
         };
 
-    TestStream<KV<String, Integer>> stream = TestStream.create(KvCoder
-        .of(StringUtf8Coder.of(), VarIntCoder.of()))
-        .advanceWatermarkTo(new Instant(0))
-        .addElements(KV.of("hello", 37))
-        .advanceWatermarkTo(new Instant(0).plus(Duration.standardSeconds(1)))
-        .advanceWatermarkToInfinity();
+    TestStream<KV<String, Integer>> stream =
+        TestStream.create(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of()))
+            .advanceWatermarkTo(new Instant(0))
+            .addElements(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37)))
+            .advanceWatermarkTo(new Instant(0).plus(Duration.standardSeconds(1)))
+            .advanceWatermarkToInfinity();
 
     PCollection<Integer> output = pipeline.apply(stream).apply(ParDo.of(fn));
-    PAssert.that(output).containsInAnyOrder(3, 42);
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 42));
     pipeline.run();
   }
 
@@ -3084,16 +3503,20 @@ public class ParDoTest implements Serializable {
           }
         };
 
-    TestStream<KV<String, Integer>> stream = TestStream.create(KvCoder
-        .of(StringUtf8Coder.of(), VarIntCoder.of()))
-        .advanceWatermarkTo(new Instant(5))
-        .addElements(KV.of("hello", 37))
-        .advanceWatermarkTo(new Instant(0).plus(Duration.standardSeconds(1).plus(1)))
-        .advanceWatermarkToInfinity();
+    TestStream<KV<String, Integer>> stream =
+        TestStream.create(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of()))
+            .advanceWatermarkTo(new Instant(5))
+            .addElements(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37)))
+            .advanceWatermarkTo(new Instant(0).plus(Duration.standardSeconds(1).plus(1)))
+            .advanceWatermarkToInfinity();
 
     PCollection<KV<Integer, Instant>> output = pipeline.apply(stream).apply(ParDo.of(fn));
-    PAssert.that(output).containsInAnyOrder(KV.of(3, new Instant(5)),
-        KV.of(42, new Instant(Duration.standardSeconds(1).minus(1).getMillis())));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(3, new Instant(5))),
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                KV.of(42, new Instant(Duration.standardSeconds(1).minus(1).getMillis()))));
     pipeline.run();
   }
 
@@ -3121,18 +3544,23 @@ public class ParDoTest implements Serializable {
           }
         };
 
-    TestStream<KV<String, Integer>> stream = TestStream.create(KvCoder
-        .of(StringUtf8Coder.of(), VarIntCoder.of()))
-        // See GlobalWindow,
-        // END_OF_GLOBAL_WINDOW is TIMESTAMP_MAX_VALUE.minus(Duration.standardDays(1))
-        .advanceWatermarkTo(BoundedWindow.TIMESTAMP_MAX_VALUE.minus(Duration.standardDays(1)))
-        .addElements(KV.of("hello", 37))
-        .advanceWatermarkToInfinity();
+    TestStream<KV<String, Integer>> stream =
+        TestStream.create(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of()))
+            // See GlobalWindow,
+            // END_OF_GLOBAL_WINDOW is TIMESTAMP_MAX_VALUE.minus(Duration.standardDays(1))
+            .advanceWatermarkTo(BoundedWindow.TIMESTAMP_MAX_VALUE.minus(Duration.standardDays(1)))
+            .addElements(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", 37)))
+            .advanceWatermarkToInfinity();
 
     PCollection<KV<Integer, Instant>> output = pipeline.apply(stream).apply(ParDo.of(fn));
-    PAssert.that(output).containsInAnyOrder(
-        KV.of(3, BoundedWindow.TIMESTAMP_MAX_VALUE.minus(Duration.standardDays(1))),
-        KV.of(42, BoundedWindow.TIMESTAMP_MAX_VALUE.minus(Duration.standardDays(1))));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                KV.of(3, BoundedWindow.TIMESTAMP_MAX_VALUE.minus(Duration.standardDays(1)))),
+            TenantAwareValue.of(
+                TenantAwareValue.NULL_TENANT,
+                KV.of(42, BoundedWindow.TIMESTAMP_MAX_VALUE.minus(Duration.standardDays(1)))));
     pipeline.run();
   }
 
@@ -3165,21 +3593,25 @@ public class ParDoTest implements Serializable {
 
     TestStream<KV<String, String>> stream =
         TestStream.create(KvCoder.of(StringUtf8Coder.of(), StringUtf8Coder.of()))
-            .addElements(KV.of("key", "input1"))
-            .addElements(KV.of("key", "input2"))
+            .addElements(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("key", "input1")))
+            .addElements(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("key", "input2")))
             .advanceProcessingTime(Duration.standardSeconds(2))
             .advanceWatermarkToInfinity();
 
     PCollection<String> output = pipeline.apply(stream).apply(ParDo.of(fn));
     // Timer "foo" is set twice because input1 and input 2 are outputted. However, only one
     // "timer_output" is outputted. Therefore, the timer is overwritten.
-    PAssert.that(output).containsInAnyOrder("input1", "input2", "timer_output");
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "input1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "input2"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "timer_output"));
     pipeline.run();
   }
 
   /**
-   * A test makes sure that an event time timer should reset rather than creating duplicate
-   * timers when a "set" method is called on it before it goes off.
+   * A test makes sure that an event time timer should reset rather than creating duplicate timers
+   * when a "set" method is called on it before it goes off.
    */
   @Test
   @Category({ValidatesRunner.class, UsesTimersInParDo.class, UsesTestStream.class})
@@ -3204,31 +3636,38 @@ public class ParDoTest implements Serializable {
           }
         };
 
-    TestStream<KV<String, String>> stream = TestStream.create(KvCoder
-        .of(StringUtf8Coder.of(), StringUtf8Coder.of()))
-        .advanceWatermarkTo(new Instant(0))
-        .addElements(KV.of("hello", "input1"))
-        .addElements(KV.of("hello", "input2"))
-        .advanceWatermarkToInfinity();
+    TestStream<KV<String, String>> stream =
+        TestStream.create(KvCoder.of(StringUtf8Coder.of(), StringUtf8Coder.of()))
+            .advanceWatermarkTo(new Instant(0))
+            .addElements(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", "input1")))
+            .addElements(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("hello", "input2")))
+            .advanceWatermarkToInfinity();
 
     PCollection<String> output = pipeline.apply(stream).apply(ParDo.of(fn));
     // Timer "foo" is set twice because input1 and input 2 are outputted. However, only one
     // "timer_output" is outputted. Therefore, the timer is overwritten.
-    PAssert.that(output).containsInAnyOrder("input1", "input2", "timer_output");
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "input1"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "input2"),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "timer_output"));
     pipeline.run();
   }
 
   @Test
   public void testWithOutputTagsDisplayData() {
-    DoFn<String, String> fn = new DoFn<String, String>() {
-      @ProcessElement
-      public void proccessElement(ProcessContext c) {}
+    DoFn<String, String> fn =
+        new DoFn<String, String>() {
+          @ProcessElement
+          public void proccessElement(ProcessContext c) {}
 
-      @Override
-      public void populateDisplayData(Builder builder) {
-        builder.add(DisplayData.item("fnMetadata", "foobar"));
-      }
-    };
+          @Override
+          public void populateDisplayData(Builder builder) {
+            builder.add(DisplayData.item("fnMetadata", "foobar"));
+          }
+        };
 
     ParDo.MultiOutput<String, String> parDo =
         ParDo.of(fn).withOutputTags(new TupleTag<>(), TupleTagList.empty());
@@ -3248,7 +3687,11 @@ public class ParDoTest implements Serializable {
     thrown.expectMessage("not a supertype");
 
     pipeline
-        .apply(Create.of(1, 2, 3))
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3)))
         .apply(
             ParDo.of(
                 new DoFn<Integer, Integer>() {
@@ -3258,9 +3701,8 @@ public class ParDoTest implements Serializable {
   }
 
   /**
-   * Tests that it is OK to use different window types in the parameter lists to different
-   * {@link DoFn} functions, as long as they are all subtypes of the actual window type
-   * of the input.
+   * Tests that it is OK to use different window types in the parameter lists to different {@link
+   * DoFn} functions, as long as they are all subtypes of the actual window type of the input.
    *
    * <p>Today, the only method other than {@link ProcessElement @ProcessElement} that can accept
    * extended parameters is {@link OnTimer @OnTimer}, which is rejected before it reaches window
@@ -3272,7 +3714,11 @@ public class ParDoTest implements Serializable {
     final String timerId = "gobbledegook";
 
     pipeline
-        .apply(Create.of(1, 2, 3))
+        .apply(
+            Create.of(
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3)))
         .apply(Window.into(FixedWindows.of(Duration.standardSeconds(10))))
         .apply(
             ParDo.of(
@@ -3294,26 +3740,29 @@ public class ParDoTest implements Serializable {
   public interface MyOptions extends PipelineOptions {
     @Default.String("fake option")
     String getFakeOption();
+
     void setFakeOption(String value);
   }
 
   @Test
   @Category(ValidatesRunner.class)
   public void testPipelineOptionsParameter() {
-    PCollection<String> results = pipeline
-        .apply(Create.of(1))
-        .apply(
-            ParDo.of(
-                new DoFn<Integer, String>() {
-                  @ProcessElement
-                  public void process(ProcessContext c, PipelineOptions options) {
-                    c.output(options.as(MyOptions.class).getFakeOption());
-                  }
-                }));
+    PCollection<String> results =
+        pipeline
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1)))
+            .apply(
+                ParDo.of(
+                    new DoFn<Integer, String>() {
+                      @ProcessElement
+                      public void process(ProcessContext c, PipelineOptions options) {
+                        c.output(options.as(MyOptions.class).getFakeOption());
+                      }
+                    }));
 
     String testOptionValue = "not fake anymore";
     pipeline.getOptions().as(MyOptions.class).setFakeOption(testOptionValue);
-    PAssert.that(results).containsInAnyOrder("not fake anymore");
+    PAssert.that(results)
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "not fake anymore"));
 
     pipeline.run();
   }
@@ -3325,7 +3774,7 @@ public class ParDoTest implements Serializable {
 
     PCollection<String> results =
         pipeline
-            .apply(Create.of(KV.of(0, 0)))
+            .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(0, 0))))
             .apply(
                 ParDo.of(
                     new DoFn<KV<Integer, Integer>, String>() {
@@ -3346,7 +3795,8 @@ public class ParDoTest implements Serializable {
 
     String testOptionValue = "not fake anymore";
     pipeline.getOptions().as(MyOptions.class).setFakeOption(testOptionValue);
-    PAssert.that(results).containsInAnyOrder("not fake anymore");
+    PAssert.that(results)
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "not fake anymore"));
 
     pipeline.run();
   }

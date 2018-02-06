@@ -21,6 +21,7 @@ import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.transforms.windowing.GlobalWindow;
 import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
 import org.apache.beam.sdk.transforms.windowing.PaneInfo;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.ValueInSingleWindow;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
@@ -36,7 +37,7 @@ public class ValueInSingleWindowCoderTest {
     Instant now = Instant.now();
     ValueInSingleWindow<String> value =
         ValueInSingleWindow.of(
-            "foo",
+            TenantAwareValue.of("tenant", "foo"),
             now,
             new IntervalWindow(now, now.plus(Duration.standardSeconds(10))),
             PaneInfo.NO_FIRING);
@@ -53,7 +54,7 @@ public class ValueInSingleWindowCoderTest {
 
   @Test
   public void testCoderIsSerializableWithWellKnownCoderType() {
-    CoderProperties.coderSerializable(ValueInSingleWindow.Coder.of(
-        GlobalWindow.Coder.INSTANCE, GlobalWindow.Coder.INSTANCE));
+    CoderProperties.coderSerializable(
+        ValueInSingleWindow.Coder.of(GlobalWindow.Coder.INSTANCE, GlobalWindow.Coder.INSTANCE));
   }
 }

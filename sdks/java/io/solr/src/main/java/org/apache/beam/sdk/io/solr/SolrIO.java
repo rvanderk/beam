@@ -49,6 +49,7 @@ import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PDone;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.http.client.HttpClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -557,6 +558,11 @@ public class SolrIO {
     }
 
     @Override
+    public String getCurrentTenantId() {
+      return TenantAwareValue.NULL_TENANT;
+    }
+
+    @Override
     public void close() throws IOException {
       solrClient.close();
     }
@@ -625,9 +631,7 @@ public class SolrIO {
 
     @Override
     public PDone expand(PCollection<SolrInputDocument> input) {
-      checkState(
-          getConnectionConfiguration() != null,
-          "withConnectionConfiguration() is required");
+      checkState(getConnectionConfiguration() != null, "withConnectionConfiguration() is required");
       checkState(getCollection() != null, "to() is required");
 
       input.apply(ParDo.of(new WriteFn(this)));

@@ -40,6 +40,7 @@ import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.util.CoderUtils;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /**
  * {@link PTransform}s for computing the approximate number of distinct elements in a stream.
@@ -360,8 +361,8 @@ public final class ApproximateDistinct {
       try {
         coder.verifyDeterministic();
       } catch (Coder.NonDeterministicException e) {
-        throw new IllegalArgumentException("Coder must be deterministic to perform this sketch."
-                + e.getMessage(), e);
+        throw new IllegalArgumentException(
+            "Coder must be deterministic to perform this sketch." + e.getMessage(), e);
       }
       return new ApproximateDistinctFn<>(12, 0, coder);
     }
@@ -404,39 +405,45 @@ public final class ApproximateDistinct {
     }
 
     @Override
-    public HyperLogLogPlus createAccumulator() {
-      return new HyperLogLogPlus(p, sp);
+    public TenantAwareValue<HyperLogLogPlus> createAccumulator() {
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new HyperLogLogPlus(p, sp));
     }
 
     @Override
-    public HyperLogLogPlus addInput(HyperLogLogPlus acc, InputT record) {
+    public TenantAwareValue<HyperLogLogPlus> addInput(
+        TenantAwareValue<HyperLogLogPlus> acc, TenantAwareValue<InputT> record) {
       try {
-        acc.offer(CoderUtils.encodeToByteArray(inputCoder, record));
+        acc.getValue().offer(CoderUtils.encodeToByteArray(inputCoder, record.getValue()));
       } catch (CoderException e) {
         throw new IllegalStateException("The input value cannot be encoded: " + e.getMessage(), e);
       }
-      return acc;
+      return TenantAwareValue.of(record.getTenantId(), acc.getValue());
     }
 
     /** Output the whole structure so it can be queried, reused or stored easily. */
     @Override
-    public HyperLogLogPlus extractOutput(HyperLogLogPlus accumulator) {
+    public TenantAwareValue<HyperLogLogPlus> extractOutput(
+        TenantAwareValue<HyperLogLogPlus> accumulator) {
       return accumulator;
     }
 
     @Override
-    public HyperLogLogPlus mergeAccumulators(Iterable<HyperLogLogPlus> accumulators) {
-      HyperLogLogPlus mergedAccum = createAccumulator();
-      for (HyperLogLogPlus accum : accumulators) {
+    public TenantAwareValue<HyperLogLogPlus> mergeAccumulators(
+        Iterable<TenantAwareValue<HyperLogLogPlus>> accumulators) {
+      String tenantId = TenantAwareValue.NULL_TENANT;
+
+      TenantAwareValue<HyperLogLogPlus> mergedAccum = createAccumulator();
+      for (TenantAwareValue<HyperLogLogPlus> accum : accumulators) {
+        tenantId = accum.getTenantId();
         try {
-          mergedAccum.addAll(accum);
+          mergedAccum.getValue().addAll(accum.getValue());
         } catch (CardinalityMergeException e) {
           // Should never happen because only HyperLogLogPlus accumulators are instantiated.
           throw new IllegalStateException(
               "The accumulators cannot be merged: " + e.getMessage(), e);
         }
       }
-      return mergedAccum;
+      return TenantAwareValue.of(tenantId, mergedAccum.getValue());
     }
 
     @Override
@@ -497,7 +504,7 @@ public final class ApproximateDistinct {
         @ProcessElement
         public void processElement(ProcessContext c) {
           KV<K, HyperLogLogPlus> kv = c.element();
-          c.output(KV.of(kv.getKey(), kv.getValue().cardinality()));
+          c.output(KV.of(kv.getKey(), kv.getValue().getValue().cardinality()));
         }
       };
     }

@@ -27,51 +27,58 @@ import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.testing.ValidatesRunner;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for KvSwap transform.
- */
+/** Tests for KvSwap transform. */
 @RunWith(JUnit4.class)
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class KvSwapTest {
-  private static final KV<String, Integer>[] TABLE = new KV[] {
-    KV.of("one", 1),
-    KV.of("two", 2),
-    KV.of("three", 3),
-    KV.of("four", 4),
-    KV.of("dup", 4),
-    KV.of("dup", 5),
-    KV.of("null", null),
-  };
+  private static final TenantAwareValue<KV<String, Integer>>[] TABLE;
 
-  private static final KV<String, Integer>[] EMPTY_TABLE = new KV[] {
-  };
+  static {
+    TABLE =
+        new TenantAwareValue[] {
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("one", 1)),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("two", 2)),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("three", 3)),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("four", 4)),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("dup", 4)),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("dup", 5)),
+          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of("null", null)),
+        };
+  }
 
-  @Rule
-  public final TestPipeline p = TestPipeline.create();
+  private static final TenantAwareValue<KV<String, Integer>>[] EMPTY_TABLE =
+      new TenantAwareValue[] {};
+
+  @Rule public final TestPipeline p = TestPipeline.create();
 
   @Test
   @Category(ValidatesRunner.class)
   public void testKvSwap() {
     PCollection<KV<String, Integer>> input =
-        p.apply(Create.of(Arrays.asList(TABLE)).withCoder(
-            KvCoder.of(StringUtf8Coder.of(), NullableCoder.of(BigEndianIntegerCoder.of()))));
+        p.apply(
+            Create.of(Arrays.asList(TABLE))
+                .withCoder(
+                    KvCoder.of(
+                        StringUtf8Coder.of(), NullableCoder.of(BigEndianIntegerCoder.of()))));
 
     PCollection<KV<Integer, String>> output = input.apply(KvSwap.create());
 
-    PAssert.that(output).containsInAnyOrder(
-        KV.of(1, "one"),
-        KV.of(2, "two"),
-        KV.of(3, "three"),
-        KV.of(4, "four"),
-        KV.of(4, "dup"),
-        KV.of(5, "dup"),
-        KV.of((Integer) null, "null"));
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(1, "one")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(2, "two")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(3, "three")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(4, "four")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(4, "dup")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of(5, "dup")),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, KV.of((Integer) null, "null")));
     p.run();
   }
 
@@ -79,8 +86,9 @@ public class KvSwapTest {
   @Category(ValidatesRunner.class)
   public void testKvSwapEmpty() {
     PCollection<KV<String, Integer>> input =
-        p.apply(Create.of(Arrays.asList(EMPTY_TABLE)).withCoder(
-            KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())));
+        p.apply(
+            Create.of(Arrays.asList(EMPTY_TABLE))
+                .withCoder(KvCoder.of(StringUtf8Coder.of(), BigEndianIntegerCoder.of())));
 
     PCollection<KV<Integer, String>> output = input.apply(KvSwap.create());
 

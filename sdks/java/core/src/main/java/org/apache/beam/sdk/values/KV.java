@@ -38,14 +38,21 @@ import org.apache.beam.sdk.transforms.SerializableComparator;
  * @param <V> the type of the value
  */
 public class KV<K, V> implements Serializable {
+  private static final String NULL_TENANT = "NO_TENANT";
+
   /** Returns a {@link KV} with the given key and value. */
-  public static <K, V> KV<K, V> of(@Nullable K key, @Nullable V value) {
-    return new KV<>(key, value);
+  public static <K, V> KV<K, V> of(@Nullable K key, TenantAwareValue<V> value) {
+    return new KV<>(TenantAwareValue.of(value.getTenantId(), key), value.getValue());
+  }
+
+  /** Returns a {@link KV} with the given key and value. */
+  public static <K, V> KV<K, V> of(@Nullable K key, V value) {
+    return new KV<>(TenantAwareValue.of(NULL_TENANT, key), value);
   }
 
   /** Returns the key of this {@link KV}. */
   public @Nullable K getKey() {
-    return key;
+    return key.getValue();
   }
 
   /** Returns the value of this {@link KV}. */
@@ -53,13 +60,35 @@ public class KV<K, V> implements Serializable {
     return value;
   }
 
+  /** Returns the tenantId of this {@link KV}. */
+  public String getTenantId() {
+    return key.getTenantId();
+  }
+
+  /** Returns the tenant-aware value of this {@link KV}. */
+  public TenantAwareValue<V> getTenantAwareValue() {
+    if (key.getTenantId() == NULL_TENANT)
+      throw new IllegalStateException("Tenant has not been assigned yet");
+
+    return TenantAwareValue.of(key.getTenantId(), value);
+  }
+
+  public boolean hasTenant() {
+    return key.getTenantId() != NULL_TENANT;
+  }
+
+  public KV<K, V> withTenant(String tenantId) {
+    if (key.getTenantId() != NULL_TENANT) // TODO: also ignore when setting to same tenantId?
+    throw new IllegalStateException("Tenant has already been assigned yet");
+    return KV.of(key.getValue(), TenantAwareValue.of(tenantId, value));
+  }
 
   /////////////////////////////////////////////////////////////////////////////
 
-  final @Nullable K key;
+  final TenantAwareValue<K> key;
   final @Nullable V value;
 
-  private KV(@Nullable K key, @Nullable V value) {
+  private KV(TenantAwareValue<K> key, @Nullable V value) {
     this.key = key;
     this.value = value;
   }
@@ -83,8 +112,8 @@ public class KV<K, V> implements Serializable {
    *
    * <p>A {@code null} key is less than any non-{@code null} key.
    */
-  public static class OrderByKey<K extends Comparable<? super K>, V> implements
-      SerializableComparator<KV<K, V>> {
+  public static class OrderByKey<K extends Comparable<? super K>, V>
+      implements SerializableComparator<KV<K, V>> {
     @Override
     public int compare(KV<K, V> a, KV<K, V> b) {
       if (a.key == null) {
@@ -92,7 +121,9 @@ public class KV<K, V> implements Serializable {
       } else if (b.key == null) {
         return 1;
       } else {
-        return a.key.compareTo(b.key);
+        int tenantCompare = a.key.getTenantId().compareTo(b.key.getTenantId());
+        if (tenantCompare != 0) return tenantCompare;
+        return a.key.getValue().compareTo(b.key.getValue());
       }
     }
   }
@@ -119,14 +150,11 @@ public class KV<K, V> implements Serializable {
   @Override
   public int hashCode() {
     // Objects.deepEquals requires Arrays.deepHashCode for correctness
-    return Arrays.deepHashCode(new Object[]{key, value});
+    return Arrays.deepHashCode(new Object[] {key, value});
   }
 
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .addValue(key)
-        .addValue(value)
-        .toString();
+    return MoreObjects.toStringHelper(this).addValue(key.getValue()).addValue(value).toString();
   }
 }

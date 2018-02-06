@@ -31,6 +31,7 @@ import org.apache.beam.sdk.io.FileBasedSink.FilenamePolicy;
 import org.apache.beam.sdk.transforms.SerializableFunction;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.transforms.display.HasDisplayData;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /** Always returns a constant {@link FilenamePolicy}, {@link Schema}, metadata, and codec. */
 class ConstantAvroDestination<UserT, OutputT>
@@ -85,7 +86,7 @@ class ConstantAvroDestination<UserT, OutputT>
 
   @Override
   public OutputT formatRecord(UserT record) {
-    return formatFunction.apply(record);
+    return formatFunction.apply(TenantAwareValue.of("SYS0", record)).getValue();
   }
 
   @Override

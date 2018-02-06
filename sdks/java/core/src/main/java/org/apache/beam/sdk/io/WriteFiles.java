@@ -82,6 +82,7 @@ import org.apache.beam.sdk.values.PCollectionViews;
 import org.apache.beam.sdk.values.PDone;
 import org.apache.beam.sdk.values.PValue;
 import org.apache.beam.sdk.values.ShardedKey;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.TupleTagList;
 import org.slf4j.Logger;
@@ -206,7 +207,7 @@ public abstract class WriteFiles<UserT, DestinationT, OutputT>
    */
   public WriteFiles<UserT, DestinationT, OutputT> withNumShards(int numShards) {
     if (numShards > 0) {
-      return withNumShards(StaticValueProvider.of(numShards));
+      return withNumShards(StaticValueProvider.of("SYS0", numShards));
     }
     return withRunnerDeterminedSharding();
   }
@@ -514,7 +515,7 @@ public abstract class WriteFiles<UserT, DestinationT, OutputT>
               unwrittenRecordsTag,
               KV.of(
                   ShardedKey.of(hashDestination(destination, destinationCoder), spilledShardNum),
-                  c.element()));
+                  TenantAwareValue.of(c.tenantId(), c.element())));
           return;
         }
       }
@@ -536,6 +537,7 @@ public abstract class WriteFiles<UserT, DestinationT, OutputT>
         }
         BoundedWindow window = key.window;
         c.output(
+            "SYS0",
             new FileResult<>(
                 writer.getOutputFile(), UNKNOWN_SHARDNUM, window, key.paneInfo, key.destination),
             window.maxTimestamp(),
@@ -660,7 +662,7 @@ public abstract class WriteFiles<UserT, DestinationT, OutputT>
         shardCount = context.sideInput(numShardsView);
       } else {
         checkNotNull(getNumShardsProvider());
-        shardCount = getNumShardsProvider().get();
+        shardCount = getNumShardsProvider().get().getValue();
       }
       checkArgument(
           shardCount > 0,
@@ -779,7 +781,7 @@ public abstract class WriteFiles<UserT, DestinationT, OutputT>
         if (numShardsView != null) {
           fixedNumShards = c.sideInput(numShardsView);
         } else if (getNumShardsProvider() != null) {
-          fixedNumShards = getNumShardsProvider().get();
+          fixedNumShards = getNumShardsProvider().get().getValue();
         } else {
           fixedNumShards = null;
         }
@@ -835,7 +837,7 @@ public abstract class WriteFiles<UserT, DestinationT, OutputT>
     @FinishBundle
     public void finishBundle(FinishBundleContext c) throws Exception {
       for (BoundedWindow w : bundles.keySet()) {
-        c.output(Lists.newArrayList(bundles.get(w)), w.maxTimestamp(), w);
+        c.output("SYS0", Lists.newArrayList(bundles.get(w)), w.maxTimestamp(), w);
       }
     }
   }

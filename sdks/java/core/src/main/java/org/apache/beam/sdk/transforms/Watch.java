@@ -62,6 +62,7 @@ import org.apache.beam.sdk.transforms.splittabledofn.RestrictionTracker;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.beam.sdk.values.TypeDescriptors;
@@ -216,9 +217,10 @@ public class Watch {
       }
 
       /** Like {@link #incomplete(List)}, but assigns the same timestamp to all new outputs. */
-      public static <OutputT> PollResult<OutputT> incomplete(
+      public static <OutputT> TenantAwareValue<PollResult<OutputT>> incomplete(
           Instant timestamp, List<OutputT> outputs) {
-        return new PollResult<>(addTimestamp(timestamp, outputs), null);
+        return TenantAwareValue.of(
+            "SYS0", new PollResult<>(addTimestamp(timestamp, outputs), null));
       }
 
       private static <OutputT> List<TimestampedValue<OutputT>> addTimestamp(
@@ -293,8 +295,8 @@ public class Watch {
     }
 
     /**
-     * Wraps a given input-independent {@link TerminationCondition} as an equivalent condition
-     * with a given input type, passing {@code null} to the original condition as input.
+     * Wraps a given input-independent {@link TerminationCondition} as an equivalent condition with
+     * a given input type, passing {@code null} to the original condition as input.
      */
     public static <InputT, StateT> TerminationCondition<InputT, StateT> ignoreInput(
         TerminationCondition<?, StateT> condition) {
@@ -306,7 +308,9 @@ public class Watch {
      * current input was seen.
      */
     public static <InputT> AfterTotalOf<InputT> afterTotalOf(ReadableDuration timeSinceInput) {
-      return afterTotalOf(SerializableFunctions.<InputT, ReadableDuration>constant(timeSinceInput));
+      return afterTotalOf(
+          SerializableFunctions.<InputT, ReadableDuration>constant(
+              TenantAwareValue.of("SYS0", timeSinceInput)));
     }
 
     /** Like {@link #afterTotalOf(ReadableDuration)}, but the duration is input-dependent. */
@@ -322,7 +326,8 @@ public class Watch {
     public static <InputT> AfterTimeSinceNewOutput<InputT> afterTimeSinceNewOutput(
         ReadableDuration timeSinceNewOutput) {
       return afterTimeSinceNewOutput(
-          SerializableFunctions.<InputT, ReadableDuration>constant(timeSinceNewOutput));
+          SerializableFunctions.<InputT, ReadableDuration>constant(
+              TenantAwareValue.of("SYS0", timeSinceNewOutput)));
     }
 
     /**
@@ -431,7 +436,8 @@ public class Watch {
 
       @Override
       public KV<Instant, ReadableDuration> forNewInput(Instant now, InputT input) {
-        return KV.of(now, maxTimeSinceInput.apply(input));
+        return KV.of(
+            now, maxTimeSinceInput.apply(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, input)));
       }
 
       @Override
@@ -474,7 +480,9 @@ public class Watch {
 
       @Override
       public KV<Instant, ReadableDuration> forNewInput(Instant now, InputT input) {
-        return KV.of(null, maxTimeSinceNewOutput.apply(input));
+        return KV.of(
+            null,
+            maxTimeSinceNewOutput.apply(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, input)));
       }
 
       @Override
@@ -686,8 +694,9 @@ public class Watch {
       }
 
       return input
-          .apply(ParDo.of(new WatchGrowthFn<>(this, outputCoder, outputKeyFn, outputKeyCoder))
-          .withSideInputs(getPollFn().getRequirements().getSideInputs()))
+          .apply(
+              ParDo.of(new WatchGrowthFn<>(this, outputCoder, outputKeyFn, outputKeyCoder))
+                  .withSideInputs(getPollFn().getRequirements().getSideInputs()))
           .setCoder(KvCoder.of(input.getCoder(), outputCoder));
     }
   }
@@ -712,12 +721,18 @@ public class Watch {
 
     @ProcessElement
     public ProcessContinuation process(
-        ProcessContext c, final GrowthTracker<OutputT, KeyT, TerminationStateT> tracker)
+        DoFn<InputT, KV<InputT, OutputT>>.ProcessContext c,
+        final GrowthTracker<OutputT, KeyT, TerminationStateT> tracker)
         throws Exception {
       if (!tracker.hasPending() && !tracker.currentRestriction().isOutputComplete) {
         LOG.debug("{} - polling input", c.element());
         Growth.PollResult<OutputT> res =
-            spec.getPollFn().getClosure().apply(c.element(), wrapProcessContext(c));
+            //  public static <InputT> Context wrapProcessContext(final DoFn<InputT,
+            // ?>.ProcessContext c) {
+            spec.getPollFn()
+                .getClosure()
+                .apply(c.tenantAwareElement(), wrapProcessContext((DoFn.ProcessContext) c))
+                .getValue();
         // TODO (https://issues.apache.org/jira/browse/BEAM-2680):
         // Consider truncating the pending outputs if there are too many, to avoid blowing
         // up the state. In that case, we'd rely on the next poll cycle to provide more outputs.
@@ -878,7 +893,8 @@ public class Watch {
           (from, into) -> {
             try {
               // Rather than hashing the output itself, hash the output key.
-              KeyT outputKey = keyFn.apply(from);
+              KeyT outputKey =
+                  keyFn.apply(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, from)).getValue();
               outputKeyCoder.encode(outputKey, Funnels.asOutputStream(into));
             } catch (IOException e) {
               throw new RuntimeException(e);
@@ -913,8 +929,7 @@ public class Watch {
       // unclaimed pending outputs plus future polling outputs.
       Map<HashCode, Instant> newCompleted = Maps.newHashMap(state.completed);
       for (TimestampedValue<OutputT> claimedOutput : claimed) {
-        newCompleted.put(
-            hash128(claimedOutput.getValue()), claimedOutput.getTimestamp());
+        newCompleted.put(hash128(claimedOutput.getValue()), claimedOutput.getTimestamp());
       }
       GrowthState<OutputT, KeyT, TerminationStateT> residual =
           new GrowthState<>(

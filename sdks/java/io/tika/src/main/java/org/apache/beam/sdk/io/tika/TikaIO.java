@@ -38,6 +38,7 @@ import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.tika.config.TikaConfig;
 import org.apache.tika.io.TikaInputStream;
 import org.apache.tika.metadata.Metadata;
@@ -117,7 +118,8 @@ public class TikaIO {
 
     /** Matches the given filepattern. */
     public Parse filepattern(String filepattern) {
-      return this.filepattern(ValueProvider.StaticValueProvider.of(filepattern));
+      return this.filepattern(
+          ValueProvider.StaticValueProvider.of(TenantAwareValue.NULL_TENANT, filepattern));
     }
 
     /** Like {@link #filepattern(String)} but using a {@link ValueProvider}. */
@@ -176,7 +178,8 @@ public class TikaIO {
      */
     public ParseFiles withTikaConfigPath(String tikaConfigPath) {
       checkArgument(tikaConfigPath != null, "tikaConfigPath can not be null.");
-      return withTikaConfigPath(StaticValueProvider.of(tikaConfigPath));
+      return withTikaConfigPath(
+          StaticValueProvider.of(TenantAwareValue.NULL_TENANT, tikaConfigPath));
     }
 
     /** Like {@code with(tikaConfigPath)}. */
@@ -222,7 +225,7 @@ public class TikaIO {
       }
       Metadata metadata = getInputMetadata();
       if (metadata != null) {
-        //TODO: use metadata.toString() only without a trim() once Apache Tika 1.17 gets released
+        // TODO: use metadata.toString() only without a trim() once Apache Tika 1.17 gets released
         builder.add(
             DisplayData.item("inputMetadata", metadata.toString().trim())
                 .withLabel("Input Metadata"));
@@ -243,7 +246,8 @@ public class TikaIO {
       public void setup() throws Exception {
         if (spec.getTikaConfigPath() != null) {
           ResourceId configResource =
-              FileSystems.matchSingleFileSpec(spec.getTikaConfigPath().get()).resourceId();
+              FileSystems.matchSingleFileSpec(spec.getTikaConfigPath().get().getValue())
+                  .resourceId();
           tikaConfig = new TikaConfig(Channels.newInputStream(FileSystems.open(configResource)));
         }
       }

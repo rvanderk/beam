@@ -35,6 +35,7 @@ import org.apache.beam.sdk.state.ValueState;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
 import org.slf4j.Logger;
@@ -44,11 +45,11 @@ import org.slf4j.LoggerFactory;
  * A {@link PTransform} that batches inputs to a desired batch size. Batches will contain only
  * elements of a single key.
  *
- * <p>Elements are buffered until there are {@code batchSize} elements
- * buffered, at which point they are output to the output {@link PCollection}.
+ * <p>Elements are buffered until there are {@code batchSize} elements buffered, at which point they
+ * are output to the output {@link PCollection}.
  *
- * <p>Windows are preserved (batches contain elements from the same window).
- * Batches may contain elements from more than one bundle
+ * <p>Windows are preserved (batches contain elements from the same window). Batches may contain
+ * elements from more than one bundle
  *
  * <p>Example (batch call a webservice and get return codes)
  *
@@ -114,8 +115,7 @@ public class GroupIntoBatches<K, InputT>
     private final StateSpec<BagState<InputT>> batchSpec;
 
     @StateId(NUM_ELEMENTS_IN_BATCH_ID)
-    private final StateSpec<CombiningState<Long, long[], Long>>
-        numElementsInBatchSpec;
+    private final StateSpec<CombiningState<Long, long[], Long>> numElementsInBatchSpec;
 
     @StateId(KEY_ID)
     private final StateSpec<ValueState<K>> keySpec;
@@ -130,19 +130,22 @@ public class GroupIntoBatches<K, InputT>
       this.batchSize = batchSize;
       this.allowedLateness = allowedLateness;
       this.batchSpec = StateSpecs.bag(inputValueCoder);
-      this.numElementsInBatchSpec = StateSpecs.combining(new Combine.BinaryCombineLongFn() {
+      this.numElementsInBatchSpec =
+          StateSpecs.combining(
+              new Combine.BinaryCombineLongFn() {
 
-        @Override
-        public long identity() {
-          return 0L;
-        }
+                @Override
+                public long identity() {
+                  return 0L;
+                }
 
-        @Override
-        public long apply(long left, long right) {
-          return left + right;
-        }
-
-      });
+                @Override
+                public TenantAwareValue<Long> apply(
+                    TenantAwareValue<Long> left, TenantAwareValue<Long> right) {
+                  return TenantAwareValue.of(
+                      right.getTenantId(), left.getValue() + right.getValue());
+                }
+              });
 
       this.keySpec = StateSpecs.value(inputKeyCoder);
       // prefetch every 20% of batchSize elements. Do not prefetch if batchSize is too little
@@ -153,8 +156,7 @@ public class GroupIntoBatches<K, InputT>
     public void processElement(
         @TimerId(END_OF_WINDOW_ID) Timer timer,
         @StateId(BATCH_ID) BagState<InputT> batch,
-        @StateId(NUM_ELEMENTS_IN_BATCH_ID)
-            CombiningState<Long, long[], Long> numElementsInBatch,
+        @StateId(NUM_ELEMENTS_IN_BATCH_ID) CombiningState<Long, long[], Long> numElementsInBatch,
         @StateId(KEY_ID) ValueState<K> key,
         ProcessContext c,
         BoundedWindow window) {
@@ -162,7 +164,8 @@ public class GroupIntoBatches<K, InputT>
 
       LOG.debug(
           "*** SET TIMER *** to point in time {} for window {}",
-          windowExpires.toString(), window.toString());
+          windowExpires.toString(),
+          window.toString());
       timer.set(windowExpires);
       key.write(c.element().getKey());
       batch.add(c.element().getValue());
@@ -171,7 +174,7 @@ public class GroupIntoBatches<K, InputT>
       numElementsInBatch.add(1L);
       Long num = numElementsInBatch.read();
       if (num % prefetchFrequency == 0) {
-        //prefetch data and modify batch state (readLater() modifies this)
+        // prefetch data and modify batch state (readLater() modifies this)
         batch.readLater();
       }
       if (num >= batchSize) {
@@ -185,12 +188,12 @@ public class GroupIntoBatches<K, InputT>
         OnTimerContext context,
         @StateId(KEY_ID) ValueState<K> key,
         @StateId(BATCH_ID) BagState<InputT> batch,
-        @StateId(NUM_ELEMENTS_IN_BATCH_ID)
-            CombiningState<Long, long[], Long> numElementsInBatch,
+        @StateId(NUM_ELEMENTS_IN_BATCH_ID) CombiningState<Long, long[], Long> numElementsInBatch,
         BoundedWindow window) {
       LOG.debug(
           "*** END OF WINDOW *** for timer timestamp {} in windows {}",
-          context.timestamp(), window.toString());
+          context.timestamp(),
+          window.toString());
       flushBatch(context, key, batch, numElementsInBatch);
     }
 

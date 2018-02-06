@@ -63,6 +63,7 @@ import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PDone;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TypeDescriptors;
 import org.joda.time.Duration;
 
@@ -433,10 +434,17 @@ public class AvroIO {
   /** Implementation of {@link #read} and {@link #readGenericRecords}. */
   @AutoValue
   public abstract static class Read<T> extends PTransform<PBegin, PCollection<T>> {
-    @Nullable abstract ValueProvider<String> getFilepattern();
+    @Nullable
+    abstract ValueProvider<String> getFilepattern();
+
     abstract MatchConfiguration getMatchConfiguration();
-    @Nullable abstract Class<T> getRecordClass();
-    @Nullable abstract Schema getSchema();
+
+    @Nullable
+    abstract Class<T> getRecordClass();
+
+    @Nullable
+    abstract Schema getSchema();
+
     abstract boolean getHintMatchesManyFiles();
 
     abstract Builder<T> toBuilder();
@@ -444,9 +452,13 @@ public class AvroIO {
     @AutoValue.Builder
     abstract static class Builder<T> {
       abstract Builder<T> setFilepattern(ValueProvider<String> filepattern);
+
       abstract Builder<T> setMatchConfiguration(MatchConfiguration matchConfiguration);
+
       abstract Builder<T> setRecordClass(Class<T> recordClass);
+
       abstract Builder<T> setSchema(Schema schema);
+
       abstract Builder<T> setHintMatchesManyFiles(boolean hintManyFiles);
 
       abstract Read<T> build();
@@ -464,9 +476,8 @@ public class AvroIO {
 
     /** Like {@link #from(ValueProvider)}. */
     public Read<T> from(String filepattern) {
-      return from(StaticValueProvider.of(filepattern));
+      return from(StaticValueProvider.of("SYS0", filepattern));
     }
-
 
     /** Sets the {@link MatchConfiguration}. */
     public Read<T> withMatchConfiguration(MatchConfiguration matchConfiguration) {
@@ -489,7 +500,7 @@ public class AvroIO {
     public Read<T> watchForNewFiles(
         Duration pollInterval, TerminationCondition<String, ?> terminationCondition) {
       return withMatchConfiguration(
-              getMatchConfiguration().continuously(pollInterval, terminationCondition));
+          getMatchConfiguration().continuously(pollInterval, terminationCondition));
     }
 
     /**
@@ -561,8 +572,13 @@ public class AvroIO {
   @AutoValue
   public abstract static class ReadAll<T> extends PTransform<PCollection<String>, PCollection<T>> {
     abstract MatchConfiguration getMatchConfiguration();
-    @Nullable abstract Class<T> getRecordClass();
-    @Nullable abstract Schema getSchema();
+
+    @Nullable
+    abstract Class<T> getRecordClass();
+
+    @Nullable
+    abstract Schema getSchema();
+
     abstract long getDesiredBundleSizeBytes();
 
     abstract Builder<T> toBuilder();
@@ -570,13 +586,15 @@ public class AvroIO {
     @AutoValue.Builder
     abstract static class Builder<T> {
       abstract Builder<T> setMatchConfiguration(MatchConfiguration matchConfiguration);
+
       abstract Builder<T> setRecordClass(Class<T> recordClass);
+
       abstract Builder<T> setSchema(Schema schema);
+
       abstract Builder<T> setDesiredBundleSizeBytes(long desiredBundleSizeBytes);
 
       abstract ReadAll<T> build();
     }
-
 
     /** Sets the {@link MatchConfiguration}. */
     public ReadAll<T> withMatchConfiguration(MatchConfiguration configuration) {
@@ -633,12 +651,14 @@ public class AvroIO {
     }
 
     @Override
-    public FileBasedSource<T> apply(String input) {
-      return Read.createSource(
-          StaticValueProvider.of(input),
-          EmptyMatchTreatment.DISALLOW,
-          recordClass,
-          schemaSupplier.get());
+    public TenantAwareValue<FileBasedSource<T>> apply(TenantAwareValue<String> input) {
+      return TenantAwareValue.of(
+          input.getTenantId(),
+          Read.createSource(
+              StaticValueProvider.of(input),
+              EmptyMatchTreatment.DISALLOW,
+              recordClass,
+              schemaSupplier.get()));
     }
   }
 
@@ -647,10 +667,16 @@ public class AvroIO {
   /** Implementation of {@link #parseGenericRecords}. */
   @AutoValue
   public abstract static class Parse<T> extends PTransform<PBegin, PCollection<T>> {
-    @Nullable abstract ValueProvider<String> getFilepattern();
+    @Nullable
+    abstract ValueProvider<String> getFilepattern();
+
     abstract MatchConfiguration getMatchConfiguration();
+
     abstract SerializableFunction<GenericRecord, T> getParseFn();
-    @Nullable abstract Coder<T> getCoder();
+
+    @Nullable
+    abstract Coder<T> getCoder();
+
     abstract boolean getHintMatchesManyFiles();
 
     abstract Builder<T> toBuilder();
@@ -658,9 +684,13 @@ public class AvroIO {
     @AutoValue.Builder
     abstract static class Builder<T> {
       abstract Builder<T> setFilepattern(ValueProvider<String> filepattern);
+
       abstract Builder<T> setMatchConfiguration(MatchConfiguration matchConfiguration);
+
       abstract Builder<T> setParseFn(SerializableFunction<GenericRecord, T> parseFn);
+
       abstract Builder<T> setCoder(Coder<T> coder);
+
       abstract Builder<T> setHintMatchesManyFiles(boolean hintMatchesManyFiles);
 
       abstract Parse<T> build();
@@ -668,7 +698,7 @@ public class AvroIO {
 
     /** Reads from the given filename or filepattern. */
     public Parse<T> from(String filepattern) {
-      return from(StaticValueProvider.of(filepattern));
+      return from(StaticValueProvider.of("SYS0", filepattern));
     }
 
     /** Like {@link #from(String)}. */
@@ -711,8 +741,8 @@ public class AvroIO {
 
       if (getMatchConfiguration().getWatchInterval() == null && !getHintMatchesManyFiles()) {
         return input.apply(
-                org.apache.beam.sdk.io.Read.from(
-                        AvroSource.from(getFilepattern()).withParseFn(getParseFn(), coder)));
+            org.apache.beam.sdk.io.Read.from(
+                AvroSource.from(getFilepattern()).withParseFn(getParseFn(), coder)));
       }
       // All other cases go through ParseAllGenericRecords.
       return input
@@ -758,8 +788,12 @@ public class AvroIO {
   @AutoValue
   public abstract static class ParseAll<T> extends PTransform<PCollection<String>, PCollection<T>> {
     abstract MatchConfiguration getMatchConfiguration();
+
     abstract SerializableFunction<GenericRecord, T> getParseFn();
-    @Nullable abstract Coder<T> getCoder();
+
+    @Nullable
+    abstract Coder<T> getCoder();
+
     abstract long getDesiredBundleSizeBytes();
 
     abstract Builder<T> toBuilder();
@@ -767,8 +801,11 @@ public class AvroIO {
     @AutoValue.Builder
     abstract static class Builder<T> {
       abstract Builder<T> setMatchConfiguration(MatchConfiguration matchConfiguration);
+
       abstract Builder<T> setParseFn(SerializableFunction<GenericRecord, T> parseFn);
+
       abstract Builder<T> setCoder(Coder<T> coder);
+
       abstract Builder<T> setDesiredBundleSizeBytes(long desiredBundleSizeBytes);
 
       abstract ParseAll<T> build();
@@ -789,7 +826,7 @@ public class AvroIO {
     public ParseAll<T> watchForNewFiles(
         Duration pollInterval, TerminationCondition<String, ?> terminationCondition) {
       return withMatchConfiguration(
-              getMatchConfiguration().continuously(pollInterval, terminationCondition));
+          getMatchConfiguration().continuously(pollInterval, terminationCondition));
     }
 
     /** Specifies the coder for the result of the {@code parseFn}. */
@@ -808,7 +845,7 @@ public class AvroIO {
           Parse.inferCoder(getCoder(), getParseFn(), input.getPipeline().getCoderRegistry());
       final SerializableFunction<GenericRecord, T> parseFn = getParseFn();
       final SerializableFunction<String, FileBasedSource<T>> createSource =
-              new CreateParseSourceFn<>(parseFn, coder);
+          new CreateParseSourceFn<>(parseFn, coder);
       return input
           .apply(FileIO.matchAll().withConfiguration(getMatchConfiguration()))
           .apply(FileIO.readMatches().withDirectoryTreatment(DirectoryTreatment.PROHIBIT))
@@ -836,8 +873,9 @@ public class AvroIO {
       }
 
       @Override
-      public FileBasedSource<T> apply(String input) {
-        return AvroSource.from(input).withParseFn(parseFn, coder);
+      public TenantAwareValue<FileBasedSource<T>> apply(TenantAwareValue<String> input) {
+        return TenantAwareValue.of(
+            input.getTenantId(), AvroSource.from(input.getValue()).withParseFn(parseFn, coder));
       }
     }
   }
@@ -855,9 +893,14 @@ public class AvroIO {
     @Nullable
     abstract SerializableFunction<UserT, OutputT> getFormatFunction();
 
-    @Nullable abstract ValueProvider<ResourceId> getFilenamePrefix();
-    @Nullable abstract String getShardTemplate();
-    @Nullable abstract String getFilenameSuffix();
+    @Nullable
+    abstract ValueProvider<ResourceId> getFilenamePrefix();
+
+    @Nullable
+    abstract String getShardTemplate();
+
+    @Nullable
+    abstract String getFilenameSuffix();
 
     @Nullable
     abstract ValueProvider<ResourceId> getTempDirectory();
@@ -866,9 +909,13 @@ public class AvroIO {
 
     abstract boolean getGenericRecords();
 
-    @Nullable abstract Schema getSchema();
+    @Nullable
+    abstract Schema getSchema();
+
     abstract boolean getWindowedWrites();
-    @Nullable abstract FilenamePolicy getFilenamePolicy();
+
+    @Nullable
+    abstract FilenamePolicy getFilenamePolicy();
 
     @Nullable
     abstract DynamicAvroDestinations<UserT, DestinationT, OutputT> getDynamicDestinations();
@@ -933,7 +980,7 @@ public class AvroIO {
      * using {@link #to(FilenamePolicy)}.
      */
     public TypedWrite<UserT, DestinationT, OutputT> to(String outputPrefix) {
-      return to(FileBasedSink.convertToFileResourceIfPossible(outputPrefix));
+      return to(FileBasedSink.convertToFileResourceIfPossible(outputPrefix).getValue());
     }
 
     /**
@@ -956,13 +1003,13 @@ public class AvroIO {
      */
     @Experimental(Kind.FILESYSTEM)
     public TypedWrite<UserT, DestinationT, OutputT> to(ResourceId outputPrefix) {
-      return toResource(StaticValueProvider.of(outputPrefix));
+      return toResource(StaticValueProvider.of("SYS0", outputPrefix));
     }
 
     private static class OutputPrefixToResourceId
         implements SerializableFunction<String, ResourceId> {
       @Override
-      public ResourceId apply(String input) {
+      public TenantAwareValue<ResourceId> apply(TenantAwareValue<String> input) {
         return FileBasedSink.convertToFileResourceIfPossible(input);
       }
     }
@@ -1037,7 +1084,7 @@ public class AvroIO {
     /** Set the base directory used to generate temporary files. */
     @Experimental(Kind.FILESYSTEM)
     public TypedWrite<UserT, DestinationT, OutputT> withTempDirectory(ResourceId tempDirectory) {
-      return withTempDirectory(StaticValueProvider.of(tempDirectory));
+      return withTempDirectory(StaticValueProvider.of("SYS0", tempDirectory));
     }
 
     /**
@@ -1220,7 +1267,7 @@ public class AvroIO {
     public Write<T> to(String outputPrefix) {
       return new Write<>(
           inner
-              .to(FileBasedSink.convertToFileResourceIfPossible(outputPrefix))
+              .to(FileBasedSink.convertToFileResourceIfPossible(outputPrefix).getValue())
               .withFormatFunction(SerializableFunctions.identity()));
     }
 
@@ -1305,12 +1352,13 @@ public class AvroIO {
       return new Write<>(inner.withCodec(codec));
     }
 
-    /** Specify that output filenames are wanted.
+    /**
+     * Specify that output filenames are wanted.
      *
-     * <p>The nested {@link TypedWrite}transform always has access to output filenames, however
-     * due to backwards-compatibility concerns, {@link Write} cannot return them. This method
-     * simply returns the inner {@link TypedWrite} transform which has {@link WriteFilesResult} as
-     * its output type, allowing access to output files.
+     * <p>The nested {@link TypedWrite}transform always has access to output filenames, however due
+     * to backwards-compatibility concerns, {@link Write} cannot return them. This method simply
+     * returns the inner {@link TypedWrite} transform which has {@link WriteFilesResult} as its
+     * output type, allowing access to output files.
      *
      * <p>The supplied {@code DestinationT} type must be: the same as that supplied in {@link
      * #to(DynamicAvroDestinations)} if that method was used, or {@code Void} otherwise.
@@ -1385,9 +1433,14 @@ public class AvroIO {
   /** Implementation of {@link #sink} and {@link #sinkViaGenericRecords}. */
   @AutoValue
   public abstract static class Sink<ElementT> implements FileIO.Sink<ElementT> {
-    @Nullable abstract RecordFormatter<ElementT> getRecordFormatter();
-    @Nullable abstract String getJsonSchema();
+    @Nullable
+    abstract RecordFormatter<ElementT> getRecordFormatter();
+
+    @Nullable
+    abstract String getJsonSchema();
+
     abstract Map<String, Object> getMetadata();
+
     abstract SerializableAvroCodecFactory getCodec();
 
     abstract Builder<ElementT> toBuilder();
@@ -1395,8 +1448,11 @@ public class AvroIO {
     @AutoValue.Builder
     abstract static class Builder<ElementT> {
       abstract Builder<ElementT> setRecordFormatter(RecordFormatter<ElementT> formatter);
+
       abstract Builder<ElementT> setJsonSchema(String jsonSchema);
+
       abstract Builder<ElementT> setMetadata(Map<String, Object> metadata);
+
       abstract Builder<ElementT> setCodec(SerializableAvroCodecFactory codec);
 
       abstract Sink<ElementT> build();

@@ -30,13 +30,17 @@ import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.coders.NullableCoder;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
+import org.apache.beam.sdk.values.TenantAwareValue.TenantAwareValueCoder;
 import org.apache.beam.sdk.values.TimestampedValue;
+import org.apache.beam.sdk.values.TimestampedValue.TimestampedValueCoder;
 
 /**
- * {@link PTransform} and {@link Combine.CombineFn} for computing the latest element
- * in a {@link PCollection}.
+ * {@link PTransform} and {@link Combine.CombineFn} for computing the latest element in a {@link
+ * PCollection}.
  *
  * <p>Example: compute the latest value for each session:
+ *
  * <pre>{@code
  * PCollection<Long> input = ...;
  * PCollection<Long> sessioned = input
@@ -44,8 +48,8 @@ import org.apache.beam.sdk.values.TimestampedValue;
  * PCollection<Long> latestValues = sessioned.apply(Latest.<Long>globally());
  * }</pre>
  *
- * <p>{@link #combineFn} can also be used manually, in combination with state and with the
- * {@link Combine} transform.
+ * <p>{@link #combineFn} can also be used manually, in combination with state and with the {@link
+ * Combine} transform.
  *
  * <p>For elements with the same timestamp, the element chosen for output is arbitrary.
  */
@@ -59,9 +63,9 @@ public class Latest {
   }
 
   /**
-   * Returns a {@link PTransform} that takes as input a {@code PCollection<T>} and returns a
-   * {@code PCollection<T>} whose contents is the latest element according to its event time, or
-   * {@literal null} if there are no elements.
+   * Returns a {@link PTransform} that takes as input a {@code PCollection<T>} and returns a {@code
+   * PCollection<T>} whose contents is the latest element according to its event time, or {@literal
+   * null} if there are no elements.
    *
    * @param <T> The type of the elements being combined.
    */
@@ -88,34 +92,35 @@ public class Latest {
    * @see Latest
    */
   @VisibleForTesting
-  static class LatestFn<T>
-      extends Combine.CombineFn<TimestampedValue<T>, TimestampedValue<T>, T> {
+  static class LatestFn<T> extends Combine.CombineFn<TimestampedValue<T>, TimestampedValue<T>, T> {
     /** Construct a new {@link LatestFn} instance. */
     public LatestFn() {}
 
     @Override
-    public TimestampedValue<T> createAccumulator() {
-      return TimestampedValue.atMinimumTimestamp(null);
+    public TenantAwareValue<TimestampedValue<T>> createAccumulator() {
+      return TenantAwareValue.of(
+          TenantAwareValue.NULL_TENANT, TimestampedValue.atMinimumTimestamp(null));
     }
 
     @Override
-    public TimestampedValue<T> addInput(
-        TimestampedValue<T> accumulator, TimestampedValue<T> input) {
+    public TenantAwareValue<TimestampedValue<T>> addInput(
+        TenantAwareValue<TimestampedValue<T>> accumulator,
+        TenantAwareValue<TimestampedValue<T>> input) {
       checkNotNull(accumulator, "accumulator must be non-null");
       checkNotNull(input, "input must be non-null");
 
-      if (input.getTimestamp().isBefore(accumulator.getTimestamp())) {
-        return accumulator;
+      if (input.getValue().getTimestamp().isBefore(accumulator.getValue().getTimestamp())) {
+        return TenantAwareValue.of(input.getTenantId(), accumulator.getValue());
       } else {
         return input;
       }
     }
 
     @Override
-    public Coder<TimestampedValue<T>> getAccumulatorCoder(
+    public TenantAwareValueCoder<TimestampedValue<T>> getAccumulatorCoder(
         CoderRegistry registry, Coder<TimestampedValue<T>> inputCoder)
         throws CannotProvideCoderException {
-      return NullableCoder.of(inputCoder);
+      return TenantAwareValueCoder.of(NullableCoder.of(inputCoder));
     }
 
     @Override
@@ -133,15 +138,16 @@ public class Latest {
     }
 
     @Override
-    public TimestampedValue<T> mergeAccumulators(Iterable<TimestampedValue<T>> accumulators) {
+    public TenantAwareValue<TimestampedValue<T>> mergeAccumulators(
+        Iterable<TenantAwareValue<TimestampedValue<T>>> accumulators) {
       checkNotNull(accumulators, "accumulators must be non-null");
 
-      Iterator<TimestampedValue<T>> iter = accumulators.iterator();
+      Iterator<TenantAwareValue<TimestampedValue<T>>> iter = accumulators.iterator();
       if (!iter.hasNext()) {
         return createAccumulator();
       }
 
-      TimestampedValue<T> merged = iter.next();
+      TenantAwareValue<TimestampedValue<T>> merged = iter.next();
       while (iter.hasNext()) {
         merged = addInput(merged, iter.next());
       }
@@ -150,8 +156,8 @@ public class Latest {
     }
 
     @Override
-    public T extractOutput(TimestampedValue<T> accumulator) {
-      return accumulator.getValue();
+    public TenantAwareValue<T> extractOutput(TenantAwareValue<TimestampedValue<T>> accumulator) {
+      return TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue().getValue());
     }
   }
 
@@ -183,8 +189,10 @@ public class Latest {
     @Override
     public PCollection<KV<K, V>> expand(PCollection<KV<K, V>> input) {
       checkNotNull(input);
-      checkArgument(input.getCoder() instanceof KvCoder,
-          "Input specifiedCoder must be an instance of KvCoder, but was %s", input.getCoder());
+      checkArgument(
+          input.getCoder() instanceof KvCoder,
+          "Input specifiedCoder must be an instance of KvCoder, but was %s",
+          input.getCoder());
 
       @SuppressWarnings("unchecked")
       KvCoder<K, V> inputCoder = (KvCoder) input.getCoder();
@@ -195,16 +203,18 @@ public class Latest {
                   new DoFn<KV<K, V>, KV<K, TimestampedValue<V>>>() {
                     @ProcessElement
                     public void processElement(ProcessContext c) {
+
                       c.output(
                           KV.of(
                               c.element().getKey(),
-                              TimestampedValue.of(c.element().getValue(), c.timestamp())));
+                              TenantAwareValue.of(
+                                  c.tenantId(),
+                                  TimestampedValue.of(c.element().getValue(), c.timestamp()))));
                     }
                   }))
           .setCoder(
               KvCoder.of(
-                  inputCoder.getKeyCoder(),
-                  TimestampedValue.TimestampedValueCoder.of(inputCoder.getValueCoder())))
+                  inputCoder.getKeyCoder(), TimestampedValueCoder.of(inputCoder.getValueCoder())))
           .apply("Latest Value", Combine.perKey(new LatestFn<>()))
           .setCoder(inputCoder);
     }

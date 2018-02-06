@@ -43,6 +43,7 @@ import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.PDone;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.commons.dbcp2.BasicDataSource;
 
 /**
@@ -56,10 +57,11 @@ import org.apache.commons.dbcp2.BasicDataSource;
  * <p>To configure the JDBC source, you have to provide a {@link DataSourceConfiguration} using<br>
  * 1. {@link DataSourceConfiguration#create(DataSource)}(which must be {@link Serializable});<br>
  * 2. or {@link DataSourceConfiguration#create(String, String)}(driver class name and url).
- * Optionally, {@link DataSourceConfiguration#withUsername(String)} and
- * {@link DataSourceConfiguration#withPassword(String)} allows you to define username and password.
+ * Optionally, {@link DataSourceConfiguration#withUsername(String)} and {@link
+ * DataSourceConfiguration#withPassword(String)} allows you to define username and password.
  *
  * <p>For example:
+ *
  * <pre>{@code
  * pipeline.apply(JdbcIO.<KV<Integer, String>>read()
  *   .withDataSourceConfiguration(JdbcIO.DataSourceConfiguration.create(
@@ -76,8 +78,8 @@ import org.apache.commons.dbcp2.BasicDataSource;
  * );
  * }</pre>
  *
- * <p>Query parameters can be configured using a user-provided {@link StatementPreparator}.
- * For example:</p>
+ * <p>Query parameters can be configured using a user-provided {@link StatementPreparator}. For
+ * example:
  *
  * <pre>{@code
  * pipeline.apply(JdbcIO.<KV<Integer, String>>read()
@@ -144,8 +146,8 @@ public class JdbcIO {
   }
 
   /**
-   * Like {@link #read}, but executes multiple instances of the query substituting each element
-   * of a {@link PCollection} as query parameters.
+   * Like {@link #read}, but executes multiple instances of the query substituting each element of a
+   * {@link PCollection} as query parameters.
    *
    * @param <ParameterT> Type of the data representing query parameters.
    * @param <OutputT> Type of the data to be read.
@@ -162,9 +164,7 @@ public class JdbcIO {
    * @param <T> Type of the data to be written.
    */
   public static <T> Write<T> write() {
-    return new AutoValue_JdbcIO_Write.Builder<T>()
-            .setBatchSize(DEFAULT_BATCH_SIZE)
-            .build();
+    return new AutoValue_JdbcIO_Write.Builder<T>().setBatchSize(DEFAULT_BATCH_SIZE).build();
   }
 
   private JdbcIO() {}
@@ -184,23 +184,40 @@ public class JdbcIO {
    */
   @AutoValue
   public abstract static class DataSourceConfiguration implements Serializable {
-    @Nullable abstract String getDriverClassName();
-    @Nullable abstract String getUrl();
-    @Nullable abstract String getUsername();
-    @Nullable abstract String getPassword();
-    @Nullable abstract String getConnectionProperties();
-    @Nullable abstract DataSource getDataSource();
+    @Nullable
+    abstract String getDriverClassName();
+
+    @Nullable
+    abstract String getUrl();
+
+    @Nullable
+    abstract String getUsername();
+
+    @Nullable
+    abstract String getPassword();
+
+    @Nullable
+    abstract String getConnectionProperties();
+
+    @Nullable
+    abstract DataSource getDataSource();
 
     abstract Builder builder();
 
     @AutoValue.Builder
     abstract static class Builder {
       abstract Builder setDriverClassName(String driverClassName);
+
       abstract Builder setUrl(String url);
+
       abstract Builder setUsername(String username);
+
       abstract Builder setPassword(String password);
+
       abstract Builder setConnectionProperties(String connectionProperties);
+
       abstract Builder setDataSource(DataSource dataSource);
+
       abstract DataSourceConfiguration build();
     }
 
@@ -230,8 +247,8 @@ public class JdbcIO {
     }
 
     /**
-     * Sets the connection properties passed to driver.connect(...).
-     * Format of the string must be [propertyName=property;]*
+     * Sets the connection properties passed to driver.connect(...). Format of the string must be
+     * [propertyName=property;]*
      *
      * <p>NOTE - The "user" and "password" properties can be add via {@link #withUsername(String)},
      * {@link #withPassword(String)}, so they do not need to be included here.
@@ -251,7 +268,7 @@ public class JdbcIO {
       }
     }
 
-    DataSource buildDatasource() throws Exception{
+    DataSource buildDatasource() throws Exception {
       if (getDataSource() != null) {
         return getDataSource();
       } else {
@@ -266,7 +283,6 @@ public class JdbcIO {
         return basicDataSource;
       }
     }
-
   }
 
   /**
@@ -281,21 +297,35 @@ public class JdbcIO {
   /** Implementation of {@link #read}. */
   @AutoValue
   public abstract static class Read<T> extends PTransform<PBegin, PCollection<T>> {
-    @Nullable abstract DataSourceConfiguration getDataSourceConfiguration();
-    @Nullable abstract ValueProvider<String> getQuery();
-    @Nullable abstract StatementPreparator getStatementPreparator();
-    @Nullable abstract RowMapper<T> getRowMapper();
-    @Nullable abstract Coder<T> getCoder();
+    @Nullable
+    abstract DataSourceConfiguration getDataSourceConfiguration();
+
+    @Nullable
+    abstract ValueProvider<String> getQuery();
+
+    @Nullable
+    abstract StatementPreparator getStatementPreparator();
+
+    @Nullable
+    abstract RowMapper<T> getRowMapper();
+
+    @Nullable
+    abstract Coder<T> getCoder();
 
     abstract Builder<T> toBuilder();
 
     @AutoValue.Builder
     abstract static class Builder<T> {
       abstract Builder<T> setDataSourceConfiguration(DataSourceConfiguration config);
+
       abstract Builder<T> setQuery(ValueProvider<String> query);
+
       abstract Builder<T> setStatementPreparator(StatementPreparator statementPreparator);
+
       abstract Builder<T> setRowMapper(RowMapper<T> rowMapper);
+
       abstract Builder<T> setCoder(Coder<T> coder);
+
       abstract Read<T> build();
     }
 
@@ -306,7 +336,7 @@ public class JdbcIO {
 
     public Read<T> withQuery(String query) {
       checkArgument(query != null, "query can not be null");
-      return withQuery(ValueProvider.StaticValueProvider.of(query));
+      return withQuery(ValueProvider.StaticValueProvider.of(TenantAwareValue.NULL_TENANT, query));
     }
 
     public Read<T> withQuery(ValueProvider<String> query) {
@@ -338,7 +368,7 @@ public class JdbcIO {
           getDataSourceConfiguration() != null, "withDataSourceConfiguration() is required");
 
       return input
-          .apply(Create.of((Void) null))
+          .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, (Void) null)))
           .apply(
               JdbcIO.<Void, T>readAll()
                   .withDataSourceConfiguration(getDataSourceConfiguration())
@@ -368,37 +398,53 @@ public class JdbcIO {
   /** Implementation of {@link #read}. */
   @AutoValue
   public abstract static class ReadAll<ParameterT, OutputT>
-          extends PTransform<PCollection<ParameterT>, PCollection<OutputT>> {
-    @Nullable abstract DataSourceConfiguration getDataSourceConfiguration();
-    @Nullable abstract ValueProvider<String> getQuery();
-    @Nullable abstract PreparedStatementSetter<ParameterT> getParameterSetter();
-    @Nullable abstract RowMapper<OutputT> getRowMapper();
-    @Nullable abstract Coder<OutputT> getCoder();
+      extends PTransform<PCollection<ParameterT>, PCollection<OutputT>> {
+    @Nullable
+    abstract DataSourceConfiguration getDataSourceConfiguration();
+
+    @Nullable
+    abstract ValueProvider<String> getQuery();
+
+    @Nullable
+    abstract PreparedStatementSetter<ParameterT> getParameterSetter();
+
+    @Nullable
+    abstract RowMapper<OutputT> getRowMapper();
+
+    @Nullable
+    abstract Coder<OutputT> getCoder();
 
     abstract Builder<ParameterT, OutputT> toBuilder();
 
     @AutoValue.Builder
     abstract static class Builder<ParameterT, OutputT> {
       abstract Builder<ParameterT, OutputT> setDataSourceConfiguration(
-              DataSourceConfiguration config);
+          DataSourceConfiguration config);
+
       abstract Builder<ParameterT, OutputT> setQuery(ValueProvider<String> query);
+
       abstract Builder<ParameterT, OutputT> setParameterSetter(
-              PreparedStatementSetter<ParameterT> parameterSetter);
+          PreparedStatementSetter<ParameterT> parameterSetter);
+
       abstract Builder<ParameterT, OutputT> setRowMapper(RowMapper<OutputT> rowMapper);
+
       abstract Builder<ParameterT, OutputT> setCoder(Coder<OutputT> coder);
+
       abstract ReadAll<ParameterT, OutputT> build();
     }
 
     public ReadAll<ParameterT, OutputT> withDataSourceConfiguration(
-            DataSourceConfiguration configuration) {
-      checkArgument(configuration != null, "JdbcIO.readAll().withDataSourceConfiguration"
+        DataSourceConfiguration configuration) {
+      checkArgument(
+          configuration != null,
+          "JdbcIO.readAll().withDataSourceConfiguration"
               + "(configuration) called with null configuration");
       return toBuilder().setDataSourceConfiguration(configuration).build();
     }
 
     public ReadAll<ParameterT, OutputT> withQuery(String query) {
       checkArgument(query != null, "JdbcIO.readAll().withQuery(query) called with null query");
-      return withQuery(ValueProvider.StaticValueProvider.of(query));
+      return withQuery(ValueProvider.StaticValueProvider.of(TenantAwareValue.NULL_TENANT, query));
     }
 
     public ReadAll<ParameterT, OutputT> withQuery(ValueProvider<String> query) {
@@ -407,16 +453,18 @@ public class JdbcIO {
     }
 
     public ReadAll<ParameterT, OutputT> withParameterSetter(
-            PreparedStatementSetter<ParameterT> parameterSetter) {
-      checkArgument(parameterSetter != null,
-              "JdbcIO.readAll().withParameterSetter(parameterSetter) called "
-                      + "with null statementPreparator");
+        PreparedStatementSetter<ParameterT> parameterSetter) {
+      checkArgument(
+          parameterSetter != null,
+          "JdbcIO.readAll().withParameterSetter(parameterSetter) called "
+              + "with null statementPreparator");
       return toBuilder().setParameterSetter(parameterSetter).build();
     }
 
     public ReadAll<ParameterT, OutputT> withRowMapper(RowMapper<OutputT> rowMapper) {
-      checkArgument(rowMapper != null,
-              "JdbcIO.readAll().withRowMapper(rowMapper) called with null rowMapper");
+      checkArgument(
+          rowMapper != null,
+          "JdbcIO.readAll().withRowMapper(rowMapper) called with null rowMapper");
       return toBuilder().setRowMapper(rowMapper).build();
     }
 
@@ -478,7 +526,7 @@ public class JdbcIO {
 
     @ProcessElement
     public void processElement(ProcessContext context) throws Exception {
-      try (PreparedStatement statement = connection.prepareStatement(query.get())) {
+      try (PreparedStatement statement = connection.prepareStatement(query.get().getValue())) {
         parameterSetter.setParameters(context.element(), statement);
         try (ResultSet resultSet = statement.executeQuery()) {
           while (resultSet.next()) {
@@ -509,18 +557,27 @@ public class JdbcIO {
   /** A {@link PTransform} to write to a JDBC datasource. */
   @AutoValue
   public abstract static class Write<T> extends PTransform<PCollection<T>, PDone> {
-    @Nullable abstract DataSourceConfiguration getDataSourceConfiguration();
-    @Nullable abstract String getStatement();
+    @Nullable
+    abstract DataSourceConfiguration getDataSourceConfiguration();
+
+    @Nullable
+    abstract String getStatement();
+
     abstract long getBatchSize();
-    @Nullable abstract PreparedStatementSetter<T> getPreparedStatementSetter();
+
+    @Nullable
+    abstract PreparedStatementSetter<T> getPreparedStatementSetter();
 
     abstract Builder<T> toBuilder();
 
     @AutoValue.Builder
     abstract static class Builder<T> {
       abstract Builder<T> setDataSourceConfiguration(DataSourceConfiguration config);
+
       abstract Builder<T> setStatement(String statement);
+
       abstract Builder<T> setBatchSize(long batchSize);
+
       abstract Builder<T> setPreparedStatementSetter(PreparedStatementSetter<T> setter);
 
       abstract Write<T> build();
@@ -529,9 +586,11 @@ public class JdbcIO {
     public Write<T> withDataSourceConfiguration(DataSourceConfiguration config) {
       return toBuilder().setDataSourceConfiguration(config).build();
     }
+
     public Write<T> withStatement(String statement) {
       return toBuilder().setStatement(statement).build();
     }
+
     public Write<T> withPreparedStatementSetter(PreparedStatementSetter<T> setter) {
       return toBuilder().setPreparedStatementSetter(setter).build();
     }
@@ -646,7 +705,11 @@ public class JdbcIO {
       // a single query may produce many gigabytes of query results.
       PCollectionView<Iterable<T>> empty =
           input
-              .apply("Consume", Filter.by(SerializableFunctions.constant(false)))
+              .apply(
+                  "Consume",
+                  Filter.by(
+                      SerializableFunctions.constant(
+                          TenantAwareValue.of(TenantAwareValue.NULL_TENANT, false))))
               .apply(View.asIterable());
       PCollection<T> materialized =
           input.apply(

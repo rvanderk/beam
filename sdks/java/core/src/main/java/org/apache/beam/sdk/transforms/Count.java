@@ -32,17 +32,19 @@ import org.apache.beam.sdk.transforms.windowing.GlobalWindows;
 import org.apache.beam.sdk.util.VarInt;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
+import org.apache.beam.sdk.values.TenantAwareValue.TenantAwareValueCoder;
 
 /**
  * {@link PTransform PTransforms} to count the elements in a {@link PCollection}.
  *
- * <p>{@link Count#perElement()} can be used to count the number of occurrences of each
- * distinct element in the PCollection, {@link Count#perKey()} can be used to count the
- * number of values per key, and {@link Count#globally()} can be used to count the total
- * number of elements in a PCollection.
+ * <p>{@link Count#perElement()} can be used to count the number of occurrences of each distinct
+ * element in the PCollection, {@link Count#perKey()} can be used to count the number of values per
+ * key, and {@link Count#globally()} can be used to count the total number of elements in a
+ * PCollection.
  *
- * <p>{@link #combineFn} can also be used manually, in combination with state and with the
- * {@link Combine} transform.
+ * <p>{@link #combineFn} can also be used manually, in combination with state and with the {@link
+ * Combine} transform.
  */
 public class Count {
   private Count() {
@@ -55,8 +57,8 @@ public class Count {
   }
 
   /**
-   * Returns a {@link PTransform} that counts the number of elements in
-   * its input {@link PCollection}.
+   * Returns a {@link PTransform} that counts the number of elements in its input {@link
+   * PCollection}.
    *
    * <p>Note: if the input collection uses a windowing strategy other than {@link GlobalWindows},
    * use {@code Combine.globally(Count.<T>combineFn()).withoutDefaults()} instead.
@@ -66,37 +68,38 @@ public class Count {
   }
 
   /**
-   * Returns a {@link PTransform} that counts the number of elements
-   * associated with each key of its input {@link PCollection}.
+   * Returns a {@link PTransform} that counts the number of elements associated with each key of its
+   * input {@link PCollection}.
    */
   public static <K, V> PTransform<PCollection<KV<K, V>>, PCollection<KV<K, Long>>> perKey() {
     return Combine.perKey(new CountFn<V>());
   }
 
   /**
-   * Returns a {@link PTransform} that counts the number of occurrences of each element
-   * in its input {@link PCollection}.
+   * Returns a {@link PTransform} that counts the number of occurrences of each element in its input
+   * {@link PCollection}.
    *
-   * <p>The returned {@code PTransform} takes a {@code PCollection<T>} and returns a
-   * {@code PCollection<KV<T, Long>>} representing a map from each distinct element of the input
-   * {@code PCollection} to the number of times that element occurs in the input. Each key in the
-   * output {@code PCollection} is unique.
+   * <p>The returned {@code PTransform} takes a {@code PCollection<T>} and returns a {@code
+   * PCollection<KV<T, Long>>} representing a map from each distinct element of the input {@code
+   * PCollection} to the number of times that element occurs in the input. Each key in the output
+   * {@code PCollection} is unique.
    *
-   * <p>The returned transform compares two values of type {@code T} by first encoding each
-   * element using the input {@code PCollection}'s {@code Coder}, then comparing the encoded
-   * bytes. Because of this, the input coder must be deterministic.
-   * (See {@link org.apache.beam.sdk.coders.Coder#verifyDeterministic()} for more detail).
-   * Performing the comparison in this manner admits efficient parallel evaluation.
+   * <p>The returned transform compares two values of type {@code T} by first encoding each element
+   * using the input {@code PCollection}'s {@code Coder}, then comparing the encoded bytes. Because
+   * of this, the input coder must be deterministic. (See {@link
+   * org.apache.beam.sdk.coders.Coder#verifyDeterministic()} for more detail). Performing the
+   * comparison in this manner admits efficient parallel evaluation.
    *
    * <p>By default, the {@code Coder} of the keys of the output {@code PCollection} is the same as
    * the {@code Coder} of the elements of the input {@code PCollection}.
    *
    * <p>Example of use:
-   * <pre> {@code
+   *
+   * <pre>{@code
    * PCollection<String> words = ...;
    * PCollection<KV<String, Long>> wordCounts =
    *     words.apply(Count.<String>perElement());
-   * } </pre>
+   * }</pre>
    */
   public static <T> PTransform<PCollection<T>, PCollection<KV<T, Long>>> perElement() {
     return new PerElement<>();
@@ -106,12 +109,11 @@ public class Count {
    * Private implementation of {@link #perElement()}.
    *
    * @param <T> the type of the elements of the input {@code PCollection}, and the type of the keys
-   * of the output {@code PCollection}
+   *     of the output {@code PCollection}
    */
-  private static class PerElement<T>
-      extends PTransform<PCollection<T>, PCollection<KV<T, Long>>> {
+  private static class PerElement<T> extends PTransform<PCollection<T>, PCollection<KV<T, Long>>> {
 
-    private PerElement() { }
+    private PerElement() {}
 
     @Override
     public PCollection<KV<T, Long>> expand(PCollection<T> input) {
@@ -121,80 +123,82 @@ public class Count {
               MapElements.via(
                   new SimpleFunction<T, KV<T, Void>>() {
                     @Override
-                    public KV<T, Void> apply(T element) {
-                      return KV.of(element, (Void) null);
+                    public TenantAwareValue<KV<T, Void>> apply(TenantAwareValue<T> element) {
+                      return TenantAwareValue.of(
+                          KV.of(
+                              (T) element,
+                              TenantAwareValue.of(element.getTenantId(), (Void) null)));
                     }
                   }))
           .apply(Count.perKey());
     }
   }
 
-  /**
-   * A {@link CombineFn} that counts elements.
-   */
+  /** A {@link CombineFn} that counts elements. */
   private static class CountFn<T> extends CombineFn<T, long[], Long> {
     // Note that the long[] accumulator always has size 1, used as
     // a box for a mutable long.
 
     @Override
-    public long[] createAccumulator() {
-      return new long[] {0};
+    public TenantAwareValue<long[]> createAccumulator() {
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new long[] {0});
     }
 
     @Override
-    public long[] addInput(long[] accumulator, T input) {
-      accumulator[0] += 1;
-      return accumulator;
+    public TenantAwareValue<long[]> addInput(
+        TenantAwareValue<long[]> accumulator, TenantAwareValue<T> input) {
+      accumulator.getValue()[0] += 1;
+      return TenantAwareValue.of(input.getTenantId(), accumulator.getValue());
     }
 
     @Override
-    public long[] mergeAccumulators(Iterable<long[]> accumulators) {
-      Iterator<long[]> iter = accumulators.iterator();
+    public TenantAwareValue<long[]> mergeAccumulators(
+        Iterable<TenantAwareValue<long[]>> accumulators) {
+      Iterator<TenantAwareValue<long[]>> iter = accumulators.iterator();
       if (!iter.hasNext()) {
         return createAccumulator();
       }
-      long[] running = iter.next();
+      TenantAwareValue<long[]> running = iter.next();
       while (iter.hasNext()) {
-        running[0] += iter.next()[0];
+        running.getValue()[0] += iter.next().getValue()[0];
       }
       return running;
     }
 
     @Override
-    public Long extractOutput(long[] accumulator) {
-      return accumulator[0];
+    public TenantAwareValue<Long> extractOutput(TenantAwareValue<long[]> accumulator) {
+      return TenantAwareValue.of(accumulator.getTenantId(), accumulator.getValue()[0]);
     }
 
     @Override
-    public Coder<long[]> getAccumulatorCoder(CoderRegistry registry,
-                                             Coder<T> inputCoder) {
-      return new AtomicCoder<long[]>() {
-        @Override
-        public void encode(long[] value, OutputStream outStream)
-            throws IOException {
-          VarInt.encode(value[0], outStream);
-        }
+    public TenantAwareValueCoder<long[]> getAccumulatorCoder(
+        CoderRegistry registry, Coder<T> inputCoder) {
+      return TenantAwareValueCoder.of(
+          new AtomicCoder<long[]>() {
+            @Override
+            public void encode(long[] value, OutputStream outStream) throws IOException {
+              VarInt.encode(value[0], outStream);
+            }
 
-        @Override
-        public long[] decode(InputStream inStream)
-            throws IOException, CoderException {
-          try {
-            return new long[] {VarInt.decodeLong(inStream)};
-          } catch (EOFException | UTFDataFormatException exn) {
-            throw new CoderException(exn);
-          }
-        }
+            @Override
+            public long[] decode(InputStream inStream) throws IOException, CoderException {
+              try {
+                return new long[] {VarInt.decodeLong(inStream)};
+              } catch (EOFException | UTFDataFormatException exn) {
+                throw new CoderException(exn);
+              }
+            }
 
-        @Override
-        public boolean isRegisterByteSizeObserverCheap(long[] value) {
-          return true;
-        }
+            @Override
+            public boolean isRegisterByteSizeObserverCheap(long[] value) {
+              return true;
+            }
 
-        @Override
-        protected long getEncodedElementByteSize(long[] value) {
-          return VarInt.getLength(value[0]);
-        }
-      };
+            @Override
+            protected long getEncodedElementByteSize(long[] value) {
+              return VarInt.getLength(value[0]);
+            }
+          });
     }
 
     @Override

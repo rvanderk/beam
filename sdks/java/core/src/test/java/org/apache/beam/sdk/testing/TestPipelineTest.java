@@ -44,6 +44,7 @@ import org.apache.beam.sdk.transforms.MapElements;
 import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.util.common.ReflectHelpers;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.hamcrest.BaseMatcher;
 import org.hamcrest.Description;
 import org.junit.Rule;
@@ -65,8 +66,9 @@ import org.junit.runners.Suite;
   TestPipelineTest.NewProviderTest.class
 })
 public class TestPipelineTest implements Serializable {
-  private static final ObjectMapper MAPPER = new ObjectMapper().registerModules(
-      ObjectMapper.findModules(ReflectHelpers.findClassLoader()));
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper()
+          .registerModules(ObjectMapper.findModules(ReflectHelpers.findClassLoader()));
 
   /** Tests related to the creation of a {@link TestPipeline}. */
   @RunWith(JUnit4.class)
@@ -93,9 +95,7 @@ public class TestPipelineTest implements Serializable {
     public void testCreationOfPipelineOptions() throws Exception {
       String stringOptions =
           MAPPER.writeValueAsString(
-              new String[] {
-                "--runner=org.apache.beam.sdk.testing.CrashingRunner"
-              });
+              new String[] {"--runner=org.apache.beam.sdk.testing.CrashingRunner"});
       System.getProperties().put("beamTestPipelineOptions", stringOptions);
       PipelineOptions options = TestPipeline.testingPipelineOptions();
       assertEquals(CrashingRunner.class, options.getRunner());
@@ -127,7 +127,8 @@ public class TestPipelineTest implements Serializable {
       assertEquals(lst.size(), 3);
       assertThat(
           lst,
-          containsInAnyOrder("--tempLocation=Test_Location",
+          containsInAnyOrder(
+              "--tempLocation=Test_Location",
               "--appName=TestPipelineCreationTest",
               "--optionsId=" + options.getOptionsId()));
     }
@@ -136,7 +137,11 @@ public class TestPipelineTest implements Serializable {
     public void testRunWithDummyEnvironmentVariableFails() {
       System.getProperties()
           .setProperty(TestPipeline.PROPERTY_USE_DEFAULT_DUMMY_RUNNER, Boolean.toString(true));
-      pipeline.apply(Create.of(1, 2, 3));
+      pipeline.apply(
+          Create.of(
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+              TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3)));
 
       thrown.expect(IllegalArgumentException.class);
       thrown.expectMessage("Cannot call #run");
@@ -180,7 +185,8 @@ public class TestPipelineTest implements Serializable {
    */
   public static class TestPipelineEnforcementsTest implements Serializable {
 
-    private static final List<String> WORDS = Collections.singletonList("hi there");
+    private static final List<TenantAwareValue<String>> WORDS =
+        Collections.singletonList(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "hi there"));
     private static final String WHATEVER = "expected";
     private static final String P_TRANSFORM = "PTransform";
     private static final String P_ASSERT = "PAssert";
@@ -193,8 +199,8 @@ public class TestPipelineTest implements Serializable {
               new SimpleFunction<String, String>() {
 
                 @Override
-                public String apply(final String input) {
-                  return WHATEVER;
+                public TenantAwareValue<String> apply(final TenantAwareValue<String> input) {
+                  return TenantAwareValue.of(input.getTenantId(), WHATEVER);
                 }
               }));
     }
@@ -208,8 +214,8 @@ public class TestPipelineTest implements Serializable {
                   new SimpleFunction<String, String>() {
 
                     @Override
-                    public String apply(final String input) {
-                      return WHATEVER;
+                    public TenantAwareValue<String> apply(final TenantAwareValue<String> input) {
+                      return TenantAwareValue.of(input.getTenantId(), WHATEVER);
                     }
                   }));
     }
@@ -261,7 +267,8 @@ public class TestPipelineTest implements Serializable {
       @Test
       public void testDanglingPTransformValidatesRunner() throws Exception {
         final PCollection<String> pCollection = pCollection(pipeline);
-        PAssert.that(pCollection).containsInAnyOrder(WHATEVER);
+        PAssert.that(pCollection)
+            .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, WHATEVER));
         pipeline.run().waitUntilFinish();
 
         exception.expect(TestPipeline.AbandonedNodeException.class);
@@ -274,7 +281,8 @@ public class TestPipelineTest implements Serializable {
       @Test
       public void testDanglingPTransformNeedsRunner() throws Exception {
         final PCollection<String> pCollection = pCollection(pipeline);
-        PAssert.that(pCollection).containsInAnyOrder(WHATEVER);
+        PAssert.that(pCollection)
+            .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, WHATEVER));
         pipeline.run().waitUntilFinish();
 
         exception.expect(TestPipeline.AbandonedNodeException.class);
@@ -287,13 +295,15 @@ public class TestPipelineTest implements Serializable {
       @Test
       public void testDanglingPAssertValidatesRunner() throws Exception {
         final PCollection<String> pCollection = pCollection(pipeline);
-        PAssert.that(pCollection).containsInAnyOrder(WHATEVER);
+        PAssert.that(pCollection)
+            .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, WHATEVER));
         pipeline.run().waitUntilFinish();
 
         exception.expect(TestPipeline.AbandonedNodeException.class);
         exception.expectMessage(P_ASSERT);
         // dangling PAssert
-        PAssert.that(pCollection).containsInAnyOrder(WHATEVER);
+        PAssert.that(pCollection)
+            .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, WHATEVER));
       }
 
       /**
@@ -353,15 +363,16 @@ public class TestPipelineTest implements Serializable {
     public void testNewProvider() {
       ValueProvider<String> foo = pipeline.newProvider("foo");
       ValueProvider<String> foobar =
-          ValueProvider.NestedValueProvider.of(foo, input -> input + "bar");
+          ValueProvider.NestedValueProvider.of(
+              foo, input -> TenantAwareValue.of(input.getTenantId(), input.getValue() + "bar"));
 
       assertFalse(foo.isAccessible());
       assertFalse(foobar.isAccessible());
 
       PAssert.that(pipeline.apply("create foo", Create.ofProvider(foo, StringUtf8Coder.of())))
-          .containsInAnyOrder("foo");
+          .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "foo"));
       PAssert.that(pipeline.apply("create foobar", Create.ofProvider(foobar, StringUtf8Coder.of())))
-          .containsInAnyOrder("foobar");
+          .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, "foobar"));
 
       pipeline.run();
     }

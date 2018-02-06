@@ -80,6 +80,7 @@ import org.apache.beam.sdk.transforms.windowing.PaneInfo.PaneInfoCoder;
 import org.apache.beam.sdk.util.MimeTypes;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.beam.sdk.values.TypeDescriptors.TypeVariableExtractor;
 import org.joda.time.Instant;
@@ -167,7 +168,7 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
     }
 
     public static CompressionType fromCanonical(Compression canonical) {
-      switch(canonical) {
+      switch (canonical) {
         case AUTO:
           throw new IllegalArgumentException("AUTO is not supported for writing");
 
@@ -206,11 +207,40 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
    * file will fail and this function will return a directory {@link ResourceId} instead.
    */
   @Experimental(Kind.FILESYSTEM)
-  public static ResourceId convertToFileResourceIfPossible(String outputPrefix) {
+  public static TenantAwareValue<ResourceId> convertToFileResourceIfPossible(String outputPrefix) {
     try {
-      return FileSystems.matchNewResource(outputPrefix, false /* isDirectory */);
+      return TenantAwareValue.of(
+          "SYS0", FileSystems.matchNewResource(outputPrefix, false /* isDirectory */));
     } catch (Exception e) {
-      return FileSystems.matchNewResource(outputPrefix, true /* isDirectory */);
+      return TenantAwareValue.of(
+          "SYS0", FileSystems.matchNewResource(outputPrefix, true /* isDirectory */));
+    }
+  }
+
+  /**
+   * This is a helper function for turning a user-provided output filename prefix and converting it
+   * into a {@link ResourceId} for writing output files. See {@link TextIO.Write#to(String)} for an
+   * example use case.
+   *
+   * <p>Typically, the input prefix will be something like {@code /tmp/foo/bar}, and the user would
+   * like output files to be named as {@code /tmp/foo/bar-0-of-3.txt}. Thus, this function tries to
+   * interpret the provided string as a file {@link ResourceId} path.
+   *
+   * <p>However, this may fail, for example if the user gives a prefix that is a directory. E.g.,
+   * {@code /}, {@code gs://my-bucket}, or {@code c://}. In that case, interpreting the string as a
+   * file will fail and this function will return a directory {@link ResourceId} instead.
+   */
+  @Experimental(Kind.FILESYSTEM)
+  public static TenantAwareValue<ResourceId> convertToFileResourceIfPossible(
+      TenantAwareValue<String> outputPrefix) {
+    try {
+      return TenantAwareValue.of(
+          outputPrefix.getTenantId(),
+          FileSystems.matchNewResource(outputPrefix.getValue(), false /* isDirectory */));
+    } catch (Exception e) {
+      return TenantAwareValue.of(
+          outputPrefix.getTenantId(),
+          FileSystems.matchNewResource(outputPrefix.getValue(), true /* isDirectory */));
     }
   }
 
@@ -333,7 +363,8 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
       } catch (CannotProvideCoderException e) {
         throw new CannotProvideCoderException(
             "Failed to infer coder for DestinationT from type "
-                + descriptor + ", please provide it explicitly by overriding getDestinationCoder()",
+                + descriptor
+                + ", please provide it explicitly by overriding getDestinationCoder()",
             e);
       }
     }
@@ -381,8 +412,8 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
 
   private static class ExtractDirectory implements SerializableFunction<ResourceId, ResourceId> {
     @Override
-    public ResourceId apply(ResourceId input) {
-      return input.getCurrentDirectory();
+    public TenantAwareValue<ResourceId> apply(TenantAwareValue<ResourceId> input) {
+      return TenantAwareValue.of(input.getTenantId(), input.getValue().getCurrentDirectory());
     }
   }
 
@@ -525,12 +556,15 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
       private final Long tempId = TEMP_COUNT.getAndIncrement();
 
       @Override
-      public ResourceId apply(ResourceId tempDirectory) {
+      public TenantAwareValue<ResourceId> apply(TenantAwareValue<ResourceId> tempDirectory) {
         // Temp directory has a timestamp and a unique ID
         String tempDirName = String.format(TEMP_DIRECTORY_PREFIX + "-%s-%s", timestamp, tempId);
-        return tempDirectory
-            .getCurrentDirectory()
-            .resolve(tempDirName, StandardResolveOptions.RESOLVE_DIRECTORY);
+        return TenantAwareValue.of(
+            tempDirectory.getTenantId(),
+            tempDirectory
+                .getValue()
+                .getCurrentDirectory()
+                .resolve(tempDirName, StandardResolveOptions.RESOLVE_DIRECTORY));
       }
     }
 
@@ -542,7 +576,7 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
      */
     @Experimental(Kind.FILESYSTEM)
     public WriteOperation(FileBasedSink<?, DestinationT, OutputT> sink, ResourceId tempDirectory) {
-      this(sink, StaticValueProvider.of(tempDirectory));
+      this(sink, StaticValueProvider.of("SYS0", tempDirectory));
     }
 
     private WriteOperation(
@@ -588,7 +622,8 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
         @Nullable DestinationT dest,
         @Nullable BoundedWindow window,
         @Nullable Integer numShards,
-        Collection<FileResult<DestinationT>> existingResults) throws Exception {
+        Collection<FileResult<DestinationT>> existingResults)
+        throws Exception {
       Collection<FileResult<DestinationT>> completeResults =
           windowedWrites
               ? existingResults
@@ -598,11 +633,13 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
         checkArgument(
             Objects.equals(dest, res.getDestination()),
             "File result has wrong destination: expected %s, got %s",
-            dest, res.getDestination());
+            dest,
+            res.getDestination());
         checkArgument(
             Objects.equals(window, res.getWindow()),
             "File result has wrong window: expected %s, got %s",
-            window, res.getWindow());
+            window,
+            res.getWindow());
       }
       List<KV<FileResult<DestinationT>, ResourceId>> outputFilenames = Lists.newArrayList();
 
@@ -642,11 +679,12 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
       for (FileResult<DestinationT> result : resultsWithShardNumbers) {
         checkArgument(
             result.getShard() != UNKNOWN_SHARDNUM, "Should have set shard number on %s", result);
-        ResourceId finalFilename = result.getDestinationFile(
-            windowedWrites,
-            getSink().getDynamicDestinations(),
-            effectiveNumShards,
-            getSink().getWritableByteChannelFactory());
+        ResourceId finalFilename =
+            result.getDestinationFile(
+                windowedWrites,
+                getSink().getDynamicDestinations(),
+                effectiveNumShards,
+                getSink().getWritableByteChannelFactory());
         checkArgument(
             !distinctFilenames.containsKey(finalFilename),
             "Filename policy must generate unique filenames, but generated the same name %s "
@@ -741,20 +779,18 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
         List<KV<FileResult<DestinationT>, ResourceId>> resultsToFinalFilenames) throws IOException {
       int numFiles = resultsToFinalFilenames.size();
 
-        LOG.debug("Copying {} files.", numFiles);
-        List<ResourceId> srcFiles = new ArrayList<>();
-        List<ResourceId> dstFiles = new ArrayList<>();
-        for (KV<FileResult<DestinationT>, ResourceId> entry : resultsToFinalFilenames) {
-          srcFiles.add(entry.getKey().getTempFilename());
-          dstFiles.add(entry.getValue());
-          LOG.info(
-              "Will copy temporary file {} to final location {}",
-              entry.getKey(),
-              entry.getValue());
-        }
-        // During a failure case, files may have been deleted in an earlier step. Thus
-        // we ignore missing files here.
-        FileSystems.copy(srcFiles, dstFiles, StandardMoveOptions.IGNORE_MISSING_FILES);
+      LOG.debug("Copying {} files.", numFiles);
+      List<ResourceId> srcFiles = new ArrayList<>();
+      List<ResourceId> dstFiles = new ArrayList<>();
+      for (KV<FileResult<DestinationT>, ResourceId> entry : resultsToFinalFilenames) {
+        srcFiles.add(entry.getKey().getTempFilename());
+        dstFiles.add(entry.getValue());
+        LOG.info(
+            "Will copy temporary file {} to final location {}", entry.getKey(), entry.getValue());
+      }
+      // During a failure case, files may have been deleted in an earlier step. Thus
+      // we ignore missing files here.
+      FileSystems.copy(srcFiles, dstFiles, StandardMoveOptions.IGNORE_MISSING_FILES);
       removeTemporaryFiles(srcFiles);
     }
 
@@ -770,7 +806,7 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
     final void removeTemporaryFiles(
         Collection<ResourceId> knownFiles, boolean shouldRemoveTemporaryDirectory)
         throws IOException {
-      ResourceId tempDir = tempDirectory.get();
+      ResourceId tempDir = tempDirectory.get().getValue();
       LOG.debug("Removing temporary bundle output files in {}.", tempDir);
 
       // To partially mitigate the effects of filesystems with eventually-consistent
@@ -913,7 +949,7 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
      */
     public final void open(String uId) throws Exception {
       this.id = uId;
-      ResourceId tempDirectory = getWriteOperation().tempDirectory.get();
+      ResourceId tempDirectory = getWriteOperation().tempDirectory.get().getValue();
       outputFile = tempDirectory.resolve(id, StandardResolveOptions.RESOLVE_FILE);
       verifyNotNull(
           outputFile, "FileSystems are not allowed to return null from resolve: %s", tempDirectory);
@@ -1181,9 +1217,7 @@ public abstract class FileBasedSink<UserT, DestinationT, OutputT>
     @Nullable
     String getMimeType();
 
-    /**
-     * @return an optional filename suffix, eg, ".gz" is returned for {@link Compression#GZIP}
-     */
+    /** @return an optional filename suffix, eg, ".gz" is returned for {@link Compression#GZIP} */
     @Nullable
     String getSuggestedFilenameSuffix();
   }

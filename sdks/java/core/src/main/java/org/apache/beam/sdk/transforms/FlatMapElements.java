@@ -26,6 +26,7 @@ import org.apache.beam.sdk.transforms.Contextful.Fn;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.transforms.display.HasDisplayData;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.beam.sdk.values.TypeDescriptors;
 
@@ -34,7 +35,7 @@ import org.apache.beam.sdk.values.TypeDescriptors;
  * {@link PCollection} and merging the results.
  */
 public class FlatMapElements<InputT, OutputT>
-extends PTransform<PCollection<? extends InputT>, PCollection<OutputT>> {
+    extends PTransform<PCollection<? extends InputT>, PCollection<OutputT>> {
   @Nullable private final transient TypeDescriptor<InputT> inputType;
   @Nullable private final transient TypeDescriptor<OutputT> outputType;
   @Nullable private final transient Object originalFnForDisplayData;
@@ -52,15 +53,15 @@ extends PTransform<PCollection<? extends InputT>, PCollection<OutputT>> {
   }
 
   /**
-   * For a {@code SimpleFunction<InputT, ? extends Iterable<OutputT>>} {@code fn},
-   * return a {@link PTransform} that applies {@code fn} to every element of the input
-   * {@code PCollection<InputT>} and outputs all of the elements to the output
-   * {@code PCollection<OutputT>}.
+   * For a {@code SimpleFunction<InputT, ? extends Iterable<OutputT>>} {@code fn}, return a {@link
+   * PTransform} that applies {@code fn} to every element of the input {@code PCollection<InputT>}
+   * and outputs all of the elements to the output {@code PCollection<OutputT>}.
    *
-   * <p>This overload is intended primarily for use in Java 7. In Java 8, the overload
-   * {@link #via(SerializableFunction)} supports use of lambda for greater concision.
+   * <p>This overload is intended primarily for use in Java 7. In Java 8, the overload {@link
+   * #via(SerializableFunction)} supports use of lambda for greater concision.
    *
    * <p>Example of use in Java 7:
+   *
    * <pre>{@code
    * PCollection<String> lines = ...;
    * PCollection<String> words = lines.apply(FlatMapElements.via(
@@ -73,8 +74,8 @@ extends PTransform<PCollection<? extends InputT>, PCollection<OutputT>> {
    *
    * <p>To use a Java 8 lambda, see {@link #via(SerializableFunction)}.
    */
-  public static <InputT, OutputT> FlatMapElements<InputT, OutputT>
-  via(SimpleFunction<? super InputT, ? extends Iterable<OutputT>> fn) {
+  public static <InputT, OutputT> FlatMapElements<InputT, OutputT> via(
+      SimpleFunction<? super InputT, ? extends Iterable<OutputT>> fn) {
     Contextful<Fn<InputT, Iterable<OutputT>>> wrapped = (Contextful) Contextful.fn(fn);
     TypeDescriptor<OutputT> outputType =
         TypeDescriptors.extractFromTypeParameters(
@@ -89,18 +90,19 @@ extends PTransform<PCollection<? extends InputT>, PCollection<OutputT>> {
    * Returns a new {@link FlatMapElements} transform with the given type descriptor for the output
    * type, but the mapping function yet to be specified using {@link #via(SerializableFunction)}.
    */
-  public static <OutputT> FlatMapElements<?, OutputT>
-  into(final TypeDescriptor<OutputT> outputType) {
+  public static <OutputT> FlatMapElements<?, OutputT> into(
+      final TypeDescriptor<OutputT> outputType) {
     return new FlatMapElements<>(null, null, null, outputType);
   }
 
   /**
-   * For a {@code SerializableFunction<InputT, ? extends Iterable<OutputT>>} {@code fn},
-   * returns a {@link PTransform} that applies {@code fn} to every element of the input
-   * {@code PCollection<InputT>} and outputs all of the elements to the output
-   * {@code PCollection<OutputT>}.
+   * For a {@code SerializableFunction<InputT, ? extends Iterable<OutputT>>} {@code fn}, returns a
+   * {@link PTransform} that applies {@code fn} to every element of the input {@code
+   * PCollection<InputT>} and outputs all of the elements to the output {@code
+   * PCollection<OutputT>}.
    *
    * <p>Example of use in Java 8:
+   *
    * <pre>{@code
    * PCollection<String> words = lines.apply(
    *     FlatMapElements.into(TypeDescriptors.strings())
@@ -110,8 +112,8 @@ extends PTransform<PCollection<? extends InputT>, PCollection<OutputT>> {
    * <p>In Java 7, the overload {@link #via(SimpleFunction)} is more concise as the output type
    * descriptor need not be provided.
    */
-  public <NewInputT> FlatMapElements<NewInputT, OutputT>
-  via(SerializableFunction<NewInputT, ? extends Iterable<OutputT>> fn) {
+  public <NewInputT> FlatMapElements<NewInputT, OutputT> via(
+      SerializableFunction<NewInputT, ? extends Iterable<OutputT>> fn) {
     return new FlatMapElements<>(
         (Contextful) Contextful.fn(fn), fn, TypeDescriptors.inputOf(fn), outputType);
   }
@@ -133,9 +135,12 @@ extends PTransform<PCollection<? extends InputT>, PCollection<OutputT>> {
                 new DoFn<InputT, OutputT>() {
                   @ProcessElement
                   public void processElement(ProcessContext c) throws Exception {
-                    Iterable<OutputT> res =
-                        fn.getClosure().apply(c.element(), Fn.Context.wrapProcessContext(c));
-                    for (OutputT output : res) {
+                    TenantAwareValue<Iterable<OutputT>> res =
+                        fn.getClosure()
+                            .apply(
+                                c.tenantAwareElement(),
+                                Fn.Context.wrapProcessContext((DoFn.ProcessContext) c));
+                    for (OutputT output : res.getValue()) {
                       c.output(output);
                     }
                   }

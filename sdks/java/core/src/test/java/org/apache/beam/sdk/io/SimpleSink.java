@@ -25,6 +25,7 @@ import org.apache.beam.sdk.io.fs.ResolveOptions.StandardResolveOptions;
 import org.apache.beam.sdk.io.fs.ResourceId;
 import org.apache.beam.sdk.options.ValueProvider.StaticValueProvider;
 import org.apache.beam.sdk.util.MimeTypes;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /**
  * A simple {@link FileBasedSink} that writes {@link String} values as lines with header and footer.
@@ -34,14 +35,20 @@ class SimpleSink<DestinationT> extends FileBasedSink<String, DestinationT, Strin
       ResourceId tempDirectory,
       DynamicDestinations<String, DestinationT, String> dynamicDestinations,
       WritableByteChannelFactory writableByteChannelFactory) {
-    super(StaticValueProvider.of(tempDirectory), dynamicDestinations, writableByteChannelFactory);
+    super(
+        StaticValueProvider.of(TenantAwareValue.NULL_TENANT, tempDirectory),
+        dynamicDestinations,
+        writableByteChannelFactory);
   }
 
   public SimpleSink(
       ResourceId tempDirectory,
       DynamicDestinations<String, DestinationT, String> dynamicDestinations,
       Compression compression) {
-    super(StaticValueProvider.of(tempDirectory), dynamicDestinations, compression);
+    super(
+        StaticValueProvider.of(TenantAwareValue.NULL_TENANT, tempDirectory),
+        dynamicDestinations,
+        compression);
   }
 
   public static SimpleSink<Void> makeSimpleSink(

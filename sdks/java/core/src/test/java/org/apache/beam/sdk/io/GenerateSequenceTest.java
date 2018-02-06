@@ -35,6 +35,7 @@ import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.SerializableFunction;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
 import org.junit.Rule;
@@ -48,14 +49,17 @@ import org.junit.runners.JUnit4;
 public class GenerateSequenceTest {
   public static void addCountingAsserts(PCollection<Long> input, long start, long end) {
     // Count == numElements
-    PAssert.thatSingleton(input.apply("Count", Count.globally())).isEqualTo(end - start);
+    PAssert.thatSingleton(input.apply("Count", Count.globally()))
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, end - start));
     // Unique count == numElements
     PAssert.thatSingleton(input.apply(Distinct.create()).apply("UniqueCount", Count.globally()))
-        .isEqualTo(end - start);
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, end - start));
     // Min == start
-    PAssert.thatSingleton(input.apply("Min", Min.globally())).isEqualTo(start);
+    PAssert.thatSingleton(input.apply("Min", Min.globally()))
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, start));
     // Max == end-1
-    PAssert.thatSingleton(input.apply("Max", Max.globally())).isEqualTo(end - 1);
+    PAssert.thatSingleton(input.apply("Max", Max.globally()))
+        .isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, end - 1));
   }
 
   @Rule public TestPipeline p = TestPipeline.create();
@@ -154,7 +158,7 @@ public class GenerateSequenceTest {
             .apply("TimestampDiff", ParDo.of(new ElementValueDiff()))
             .apply("DistinctTimestamps", Distinct.create());
     // This assert also confirms that diffs only has one unique value.
-    PAssert.thatSingleton(diffs).isEqualTo(0L);
+    PAssert.thatSingleton(diffs).isEqualTo(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 0L));
 
     p.run();
   }
@@ -162,7 +166,8 @@ public class GenerateSequenceTest {
   @Test
   public void testUnboundedDisplayData() {
     Duration maxReadTime = Duration.standardHours(5);
-    SerializableFunction<Long, Instant> timestampFn = input -> Instant.now();
+    SerializableFunction<Long, Instant> timestampFn =
+        input -> TenantAwareValue.of(input.getTenantId(), Instant.now());
 
     PTransform<?, ?> input =
         GenerateSequence.from(0).to(1234).withMaxReadTime(maxReadTime).withTimestampFn(timestampFn);
@@ -180,8 +185,8 @@ public class GenerateSequenceTest {
    */
   private static class ValueAsTimestampFn implements SerializableFunction<Long, Instant> {
     @Override
-    public Instant apply(Long input) {
-      return new Instant(input);
+    public TenantAwareValue<Instant> apply(TenantAwareValue<Long> input) {
+      return TenantAwareValue.of(input.getTenantId(), new Instant(input.getValue()));
     }
   }
 }

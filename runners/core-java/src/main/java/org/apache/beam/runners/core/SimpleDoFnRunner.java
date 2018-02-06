@@ -46,7 +46,9 @@ import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.util.SystemDoFnInternal;
 import org.apache.beam.sdk.util.UserCodeException;
 import org.apache.beam.sdk.util.WindowedValue;
+import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.WindowingStrategy;
 import org.joda.time.Duration;
@@ -162,8 +164,7 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
         break;
 
       default:
-        throw new IllegalArgumentException(
-            String.format("Unknown time domain: %s", timeDomain));
+        throw new IllegalArgumentException(String.format("Unknown time domain: %s", timeDomain));
     }
 
     OnTimerArgumentProvider argumentProvider =
@@ -206,16 +207,21 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     return sideInputReader.get(view, sideInputWindow);
   }
 
-  private <T> void outputWindowedValue(TupleTag<T> tag, WindowedValue<T> windowedElem) {
+  private <T> void outputWindowedValue(
+      TupleTag<T> tag, WindowedValue<T> windowedElem, String tenantId) {
     checkArgument(outputTags.contains(tag), "Unknown output tag %s", tag);
+    if (windowedElem.getValue() instanceof KV) {
+      KV<?, ?> kv = (KV<?, ?>) windowedElem.getValue();
+      if (!kv.hasTenant())
+        windowedElem =
+            windowedElem.withValue(
+                (T) KV.of(kv.getKey(), TenantAwareValue.of(tenantId, kv.getValue().getValue())));
+    }
     outputManager.output(tag, windowedElem);
   }
 
-  /**
-   * A concrete implementation of {@link DoFn.StartBundleContext}.
-   */
-  private class DoFnStartBundleContext
-      extends DoFn<InputT, OutputT>.StartBundleContext
+  /** A concrete implementation of {@link DoFn.StartBundleContext}. */
+  private class DoFnStartBundleContext extends DoFn<InputT, OutputT>.StartBundleContext
       implements DoFnInvoker.ArgumentProvider<InputT, OutputT> {
     private DoFnStartBundleContext() {
       fn.super();
@@ -280,12 +286,8 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     }
   }
 
-  /**
-   * B
-   * A concrete implementation of {@link DoFn.FinishBundleContext}.
-   */
-  private class DoFnFinishBundleContext
-      extends DoFn<InputT, OutputT>.FinishBundleContext
+  /** B A concrete implementation of {@link DoFn.FinishBundleContext}. */
+  private class DoFnFinishBundleContext extends DoFn<InputT, OutputT>.FinishBundleContext
       implements DoFnInvoker.ArgumentProvider<InputT, OutputT> {
     private DoFnFinishBundleContext() {
       fn.super();
@@ -350,13 +352,15 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     }
 
     @Override
-    public void output(OutputT output, Instant timestamp, BoundedWindow window) {
-      output(mainOutputTag, output, timestamp, window);
+    public void output(String tenantId, OutputT output, Instant timestamp, BoundedWindow window) {
+      output(tenantId, mainOutputTag, output, timestamp, window);
     }
 
     @Override
-    public <T> void output(TupleTag<T> tag, T output, Instant timestamp, BoundedWindow window) {
-      outputWindowedValue(tag, WindowedValue.of(output, timestamp, window, PaneInfo.NO_FIRING));
+    public <T> void output(
+        String tenantId, TupleTag<T> tag, T output, Instant timestamp, BoundedWindow window) {
+      outputWindowedValue(
+          tag, WindowedValue.of(tenantId, output, timestamp, window, PaneInfo.NO_FIRING), tenantId);
     }
   }
 
@@ -374,9 +378,9 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     /**
      * The state namespace for this context.
      *
-     * <p>Any call to this method when more than one window is present will crash; this
-     * represents a bug in the runner or the {@link DoFnSignature}, since values must be in exactly
-     * one window when state or timers are relevant.
+     * <p>Any call to this method when more than one window is present will crash; this represents a
+     * bug in the runner or the {@link DoFnSignature}, since values must be in exactly one window
+     * when state or timers are relevant.
      */
     private StateNamespace getNamespace() {
       if (namespace == null) {
@@ -385,8 +389,7 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
       return namespace;
     }
 
-    private DoFnProcessContext(
-        WindowedValue<InputT> elem) {
+    private DoFnProcessContext(WindowedValue<InputT> elem) {
       fn.super();
       this.elem = elem;
     }
@@ -399,6 +402,11 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     @Override
     public InputT element() {
       return elem.getValue();
+    }
+
+    @Override
+    public String tenantId() {
+      return elem.getTenantId();
     }
 
     @Override
@@ -433,7 +441,7 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     @Override
     public <T> void output(TupleTag<T> tag, T output) {
       checkNotNull(tag, "Tag passed to output cannot be null");
-      outputWindowedValue(tag, elem.withValue(output));
+      outputWindowedValue(tag, elem.withValue(output), elem.getTenantId());
     }
 
     @Override
@@ -441,7 +449,51 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
       checkNotNull(tag, "Tag passed to outputWithTimestamp cannot be null");
       checkTimestamp(timestamp);
       outputWindowedValue(
-          tag, WindowedValue.of(output, timestamp, elem.getWindows(), elem.getPane()));
+          tag,
+          WindowedValue.of(
+              elem.getTenantId(), output, timestamp, elem.getWindows(), elem.getPane()),
+          elem.getTenantId());
+    }
+
+    @Override
+    public void output(TenantAwareValue<OutputT> output) {
+      output(mainOutputTag, output);
+    }
+
+    @Override
+    public void outputWithTimestamp(TenantAwareValue<OutputT> output, Instant timestamp) {
+      checkTimestamp(timestamp);
+      outputWithTimestamp(mainOutputTag, output, timestamp);
+    }
+
+    @Override
+    public <T> void output(TupleTag<T> tag, TenantAwareValue<T> output) {
+      checkNotNull(tag, "Tag passed to output cannot be null");
+      outputWindowedValue(
+          tag,
+          WindowedValue.of(
+              output.getTenantId(),
+              output.getValue(),
+              elem.getTimestamp(),
+              elem.getWindows(),
+              elem.getPane()),
+          elem.getTenantId());
+    }
+
+    @Override
+    public <T> void outputWithTimestamp(
+        TupleTag<T> tag, TenantAwareValue<T> output, Instant timestamp) {
+      checkNotNull(tag, "Tag passed to outputWithTimestamp cannot be null");
+      checkTimestamp(timestamp);
+      outputWindowedValue(
+          tag,
+          WindowedValue.of(
+              output.getTenantId(),
+              output.getValue(),
+              timestamp,
+              elem.getWindows(),
+              elem.getPane()),
+          elem.getTenantId());
     }
 
     @Override
@@ -524,8 +576,7 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     @Override
     public Timer timer(String timerId) {
       try {
-        TimerSpec spec =
-            (TimerSpec) signature.timerDeclarations().get(timerId).field().get(fn);
+        TimerSpec spec = (TimerSpec) signature.timerDeclarations().get(timerId).field().get(fn);
         return new TimerInternalsTimer(
             window(), getNamespace(), timerId, spec, stepContext.timerInternals());
       } catch (IllegalAccessException e) {
@@ -538,8 +589,7 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
    * A concrete implementation of {@link DoFnInvoker.ArgumentProvider} used for running a {@link
    * DoFn} on a timer.
    */
-  private class OnTimerArgumentProvider
-      extends DoFn<InputT, OutputT>.OnTimerContext
+  private class OnTimerArgumentProvider extends DoFn<InputT, OutputT>.OnTimerContext
       implements DoFnInvoker.ArgumentProvider<InputT, OutputT> {
     private final BoundedWindow window;
     private final Instant timestamp;
@@ -551,9 +601,9 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     /**
      * The state namespace for this context.
      *
-     * <p>Any call to this method when more than one window is present will crash; this
-     * represents a bug in the runner or the {@link DoFnSignature}, since values must be in exactly
-     * one window when state or timers are relevant.
+     * <p>Any call to this method when more than one window is present will crash; this represents a
+     * bug in the runner or the {@link DoFnSignature}, since values must be in exactly one window
+     * when state or timers are relevant.
      */
     private StateNamespace getNamespace() {
       if (namespace == null) {
@@ -563,9 +613,7 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     }
 
     private OnTimerArgumentProvider(
-        BoundedWindow window,
-        Instant timestamp,
-        TimeDomain timeDomain) {
+        BoundedWindow window, Instant timestamp, TimeDomain timeDomain) {
       fn.super();
       this.window = window;
       this.timestamp = timestamp;
@@ -603,7 +651,6 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
       return timeDomain;
     }
 
-
     @Override
     public DoFn<InputT, OutputT>.ProcessContext processContext(DoFn<InputT, OutputT> doFn) {
       throw new UnsupportedOperationException("ProcessContext parameters are not supported.");
@@ -635,8 +682,7 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     @Override
     public Timer timer(String timerId) {
       try {
-        TimerSpec spec =
-            (TimerSpec) signature.timerDeclarations().get(timerId).field().get(fn);
+        TimerSpec spec = (TimerSpec) signature.timerDeclarations().get(timerId).field().get(fn);
         return new TimerInternalsTimer(
             window, getNamespace(), timerId, spec, stepContext.timerInternals());
       } catch (IllegalAccessException e) {
@@ -651,22 +697,51 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
 
     @Override
     public void output(OutputT output) {
-      output(mainOutputTag, output);
+      throw new UnsupportedOperationException("Output not possible as there is no tenant context.");
     }
 
     @Override
     public void outputWithTimestamp(OutputT output, Instant timestamp) {
-      outputWithTimestamp(mainOutputTag, output, timestamp);
+      throw new UnsupportedOperationException("Output not possible as there is no tenant context.");
     }
 
     @Override
     public <T> void output(TupleTag<T> tag, T output) {
-      outputWindowedValue(tag, WindowedValue.of(output, timestamp, window(), PaneInfo.NO_FIRING));
+      throw new UnsupportedOperationException("Output not possible as there is no tenant context.");
     }
 
     @Override
     public <T> void outputWithTimestamp(TupleTag<T> tag, T output, Instant timestamp) {
-      outputWindowedValue(tag, WindowedValue.of(output, timestamp, window(), PaneInfo.NO_FIRING));
+      throw new UnsupportedOperationException("Output not possible as there is no tenant context.");
+    }
+
+    @Override
+    public void output(TenantAwareValue<OutputT> output) {
+      output(mainOutputTag, output);
+    }
+
+    @Override
+    public void outputWithTimestamp(TenantAwareValue<OutputT> output, Instant timestamp) {
+      outputWithTimestamp(mainOutputTag, output, timestamp);
+    }
+
+    @Override
+    public <T> void output(TupleTag<T> tag, TenantAwareValue<T> output) {
+      outputWindowedValue(
+          tag,
+          WindowedValue.of(
+              output.getTenantId(), output.getValue(), timestamp, window(), PaneInfo.NO_FIRING),
+          output.getTenantId());
+    }
+
+    @Override
+    public <T> void outputWithTimestamp(
+        TupleTag<T> tag, TenantAwareValue<T> output, Instant timestamp) {
+      outputWindowedValue(
+          tag,
+          WindowedValue.of(
+              output.getTenantId(), output.getValue(), timestamp, window(), PaneInfo.NO_FIRING),
+          output.getTenantId());
     }
   }
 
@@ -744,15 +819,18 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     }
 
     /**
-     * Ensures that the target time is reasonable. For event time timers this means that the
-     * time should be prior to window GC time.
+     * Ensures that the target time is reasonable. For event time timers this means that the time
+     * should be prior to window GC time.
      */
     private void verifyTargetTime(Instant target) {
       if (TimeDomain.EVENT_TIME.equals(spec.getTimeDomain())) {
         Instant windowExpiry = window.maxTimestamp().plus(allowedLateness);
-        checkArgument(!target.isAfter(windowExpiry),
+        checkArgument(
+            !target.isAfter(windowExpiry),
             "Attempted to set event time timer for %s but that is after"
-            + " the expiration of window %s", target, windowExpiry);
+                + " the expiration of window %s",
+            target,
+            windowExpiry);
       }
     }
 
@@ -760,22 +838,21 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
     private void verifyAbsoluteTimeDomain() {
       if (!TimeDomain.EVENT_TIME.equals(spec.getTimeDomain())) {
         throw new IllegalStateException(
-            "Cannot only set relative timers in processing time domain."
-                + " Use #setRelative()");
+            "Cannot only set relative timers in processing time domain." + " Use #setRelative()");
       }
     }
 
     /**
-     * Sets the timer for the target time without checking anything about whether it is
-     * a reasonable thing to do. For example, absolute processing time timers are not
-     * really sensible since the user has no way to compute a good choice of time.
+     * Sets the timer for the target time without checking anything about whether it is a reasonable
+     * thing to do. For example, absolute processing time timers are not really sensible since the
+     * user has no way to compute a good choice of time.
      */
     private void setUnderlyingTimer(Instant target) {
       timerInternals.setTimer(namespace, timerId, target, spec.getTimeDomain());
     }
 
     private Instant getCurrentTime() {
-      switch(spec.getTimeDomain()) {
+      switch (spec.getTimeDomain()) {
         case EVENT_TIME:
           return timerInternals.currentInputWatermarkTime();
         case PROCESSING_TIME:
@@ -787,6 +864,5 @@ public class SimpleDoFnRunner<InputT, OutputT> implements DoFnRunner<InputT, Out
               String.format("Timer created for unknown time domain %s", spec.getTimeDomain()));
       }
     }
-
   }
 }

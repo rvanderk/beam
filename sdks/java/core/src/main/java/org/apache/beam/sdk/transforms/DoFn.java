@@ -42,30 +42,26 @@ import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
 
 /**
- * The argument to {@link ParDo} providing the code to use to process
- * elements of the input
- * {@link org.apache.beam.sdk.values.PCollection}.
+ * The argument to {@link ParDo} providing the code to use to process elements of the input {@link
+ * org.apache.beam.sdk.values.PCollection}.
  *
- * <p>See {@link ParDo} for more explanation, examples of use, and
- * discussion of constraints on {@code DoFn}s, including their
- * serializability, lack of access to global shared mutable state,
+ * <p>See {@link ParDo} for more explanation, examples of use, and discussion of constraints on
+ * {@code DoFn}s, including their serializability, lack of access to global shared mutable state,
  * requirements for failure tolerance, and benefits of optimization.
  *
- * <p>{@code DoFn}s can be tested in a particular
- * {@code Pipeline} by running that {@code Pipeline} on sample input
- * and then checking its output.  Unit testing of a {@code DoFn},
- * separately from any {@code ParDo} transform or {@code Pipeline},
- * can be done via the {@link DoFnTester} harness.
+ * <p>{@code DoFn}s can be tested in a particular {@code Pipeline} by running that {@code Pipeline}
+ * on sample input and then checking its output. Unit testing of a {@code DoFn}, separately from any
+ * {@code ParDo} transform or {@code Pipeline}, can be done via the {@link DoFnTester} harness.
  *
- * <p>Implementations must define a method annotated with {@link ProcessElement}
- * that satisfies the requirements described there. See the {@link ProcessElement}
- * for details.
+ * <p>Implementations must define a method annotated with {@link ProcessElement} that satisfies the
+ * requirements described there. See the {@link ProcessElement} for details.
  *
  * <p>Example usage:
  *
@@ -83,44 +79,40 @@ import org.joda.time.Instant;
  * @param <OutputT> the type of the (main) output elements
  */
 public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayData {
-  /**
-   * Information accessible while within the {@link StartBundle} method.
-   */
+  /** Information accessible while within the {@link StartBundle} method. */
   public abstract class StartBundleContext {
     /**
      * Returns the {@code PipelineOptions} specified with the {@link
-     * org.apache.beam.sdk.PipelineRunner} invoking this {@code DoFn}. The {@code
-     * PipelineOptions} will be the default running via {@link DoFnTester}.
+     * org.apache.beam.sdk.PipelineRunner} invoking this {@code DoFn}. The {@code PipelineOptions}
+     * will be the default running via {@link DoFnTester}.
      */
     public abstract PipelineOptions getPipelineOptions();
   }
 
-  /**
-   * Information accessible while within the {@link FinishBundle} method.
-   */
+  /** Information accessible while within the {@link FinishBundle} method. */
   public abstract class FinishBundleContext {
     /**
      * Returns the {@code PipelineOptions} specified with the {@link
-     * org.apache.beam.sdk.PipelineRunner} invoking this {@code DoFn}. The {@code
-     * PipelineOptions} will be the default running via {@link DoFnTester}.
+     * org.apache.beam.sdk.PipelineRunner} invoking this {@code DoFn}. The {@code PipelineOptions}
+     * will be the default running via {@link DoFnTester}.
      */
     public abstract PipelineOptions getPipelineOptions();
 
     /**
-     * Adds the given element to the main output {@code PCollection} at the given
-     * timestamp in the given window.
+     * Adds the given element to the main output {@code PCollection} at the given timestamp in the
+     * given window for the given tenant.
      *
-     * <p>Once passed to {@code output} the element should not be modified in
-     * any way.
+     * <p>Once passed to {@code output} the element should not be modified in any way.
      *
-     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from the
-     * {@link FinishBundle} method.
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from the {@link
+     * FinishBundle} method.
      */
-    public abstract void output(OutputT output, Instant timestamp, BoundedWindow window);
+    public abstract void output(
+        String tenantId, OutputT output, Instant timestamp, BoundedWindow window);
 
     /**
      * Adds the given element to the output {@code PCollection} with the given tag at the given
-     * timestamp in the given window.
+     * timestamp in the given window for the given tenant.
      *
      * <p>Once passed to {@code output} the element should not be modified in any way.
      *
@@ -128,7 +120,7 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
      * FinishBundle} method.
      */
     public abstract <T> void output(
-        TupleTag<T> tag, T output, Instant timestamp, BoundedWindow window);
+        String tenantId, TupleTag<T> tag, T output, Instant timestamp, BoundedWindow window);
   }
 
   /**
@@ -137,131 +129,203 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   public abstract class WindowedContext {
     /**
      * Returns the {@code PipelineOptions} specified with the {@link
-     * org.apache.beam.sdk.PipelineRunner} invoking this {@code DoFn}. The {@code
-     * PipelineOptions} will be the default running via {@link DoFnTester}.
+     * org.apache.beam.sdk.PipelineRunner} invoking this {@code DoFn}. The {@code PipelineOptions}
+     * will be the default running via {@link DoFnTester}.
      */
     public abstract PipelineOptions getPipelineOptions();
 
     /**
      * Adds the given element to the main output {@code PCollection}.
      *
-     * <p>Once passed to {@code output} the element should not be modified in
-     * any way.
+     * <p>Once passed to {@code output} the element should not be modified in any way.
      *
-     * <p>If invoked from {@link ProcessElement}, the output
-     * element will have the same timestamp and be in the same windows
-     * as the input element passed to the method annotated with
+     * <p>If invoked from {@link ProcessElement}, the output element will have the same timestamp
+     * and be in the same windows as the input element passed to the method annotated with
      * {@code @ProcessElement}.
      *
-     * <p>If invoked from {@link StartBundle} or {@link FinishBundle},
-     * this will attempt to use the
-     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn}
-     * of the input {@code PCollection} to determine what windows the element
-     * should be in, throwing an exception if the {@code WindowFn} attempts
-     * to access any information about the input element. The output element
-     * will have a timestamp of negative infinity.
+     * <p>If invoked from {@link StartBundle} or {@link FinishBundle}, this will attempt to use the
+     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn} of the input {@code PCollection} to
+     * determine what windows the element should be in, throwing an exception if the {@code
+     * WindowFn} attempts to access any information about the input element. The output element will
+     * have a timestamp of negative infinity.
      *
-     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from
-     * {@link StartBundle} or {@link FinishBundle} methods.
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from {@link StartBundle}
+     * or {@link FinishBundle} methods.
      */
     public abstract void output(OutputT output);
 
     /**
-     * Adds the given element to the main output {@code PCollection},
-     * with the given timestamp.
+     * Adds the given element to the main output {@code PCollection}, with the given timestamp.
      *
-     * <p>Once passed to {@code outputWithTimestamp} the element should not be
-     * modified in any way.
+     * <p>Once passed to {@code outputWithTimestamp} the element should not be modified in any way.
      *
-     * <p>If invoked from {@link ProcessElement}), the timestamp
-     * must not be older than the input element's timestamp minus
-     * {@link DoFn#getAllowedTimestampSkew}.  The output element will
-     * be in the same windows as the input element.
+     * <p>If invoked from {@link ProcessElement}), the timestamp must not be older than the input
+     * element's timestamp minus {@link DoFn#getAllowedTimestampSkew}. The output element will be in
+     * the same windows as the input element.
      *
-     * <p>If invoked from {@link StartBundle} or {@link FinishBundle},
-     * this will attempt to use the
-     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn}
-     * of the input {@code PCollection} to determine what windows the element
-     * should be in, throwing an exception if the {@code WindowFn} attempts
-     * to access any information about the input element except for the
+     * <p>If invoked from {@link StartBundle} or {@link FinishBundle}, this will attempt to use the
+     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn} of the input {@code PCollection} to
+     * determine what windows the element should be in, throwing an exception if the {@code
+     * WindowFn} attempts to access any information about the input element except for the
      * timestamp.
      *
-     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from
-     * {@link StartBundle} or {@link FinishBundle} methods.
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from {@link StartBundle}
+     * or {@link FinishBundle} methods.
      */
     public abstract void outputWithTimestamp(OutputT output, Instant timestamp);
 
     /**
-     * Adds the given element to the output {@code PCollection} with the
-     * given tag.
+     * Adds the given element to the output {@code PCollection} with the given tag.
      *
-     * <p>Once passed to {@code output} the element should not be modified
-     * in any way.
+     * <p>Once passed to {@code output} the element should not be modified in any way.
      *
-     * <p>The caller of {@code ParDo} uses {@link ParDo.SingleOutput#withOutputTags} to
-     * specify the tags of outputs that it consumes. Non-consumed
-     * outputs, e.g., outputs for monitoring purposes only, don't necessarily
-     * need to be specified.
+     * <p>The caller of {@code ParDo} uses {@link ParDo.SingleOutput#withOutputTags} to specify the
+     * tags of outputs that it consumes. Non-consumed outputs, e.g., outputs for monitoring purposes
+     * only, don't necessarily need to be specified.
      *
-     * <p>The output element will have the same timestamp and be in the same
-     * windows as the input element passed to {@link ProcessElement}).
+     * <p>The output element will have the same timestamp and be in the same windows as the input
+     * element passed to {@link ProcessElement}).
      *
-     * <p>If invoked from {@link StartBundle} or {@link FinishBundle},
-     * this will attempt to use the
-     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn}
-     * of the input {@code PCollection} to determine what windows the element
-     * should be in, throwing an exception if the {@code WindowFn} attempts
-     * to access any information about the input element. The output element
-     * will have a timestamp of negative infinity.
+     * <p>If invoked from {@link StartBundle} or {@link FinishBundle}, this will attempt to use the
+     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn} of the input {@code PCollection} to
+     * determine what windows the element should be in, throwing an exception if the {@code
+     * WindowFn} attempts to access any information about the input element. The output element will
+     * have a timestamp of negative infinity.
      *
-     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from
-     * {@link StartBundle} or {@link FinishBundle} methods.
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from {@link StartBundle}
+     * or {@link FinishBundle} methods.
      *
      * @see ParDo.SingleOutput#withOutputTags
      */
     public abstract <T> void output(TupleTag<T> tag, T output);
 
     /**
-     * Adds the given element to the specified output {@code PCollection},
-     * with the given timestamp.
+     * Adds the given element to the specified output {@code PCollection}, with the given timestamp.
      *
-     * <p>Once passed to {@code outputWithTimestamp} the element should not be
-     * modified in any way.
+     * <p>Once passed to {@code outputWithTimestamp} the element should not be modified in any way.
      *
-     * <p>If invoked from {@link ProcessElement}), the timestamp
-     * must not be older than the input element's timestamp minus
-     * {@link DoFn#getAllowedTimestampSkew}.  The output element will
-     * be in the same windows as the input element.
+     * <p>If invoked from {@link ProcessElement}), the timestamp must not be older than the input
+     * element's timestamp minus {@link DoFn#getAllowedTimestampSkew}. The output element will be in
+     * the same windows as the input element.
      *
-     * <p>If invoked from {@link StartBundle} or {@link FinishBundle},
-     * this will attempt to use the
-     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn}
-     * of the input {@code PCollection} to determine what windows the element
-     * should be in, throwing an exception if the {@code WindowFn} attempts
-     * to access any information about the input element except for the
+     * <p>If invoked from {@link StartBundle} or {@link FinishBundle}, this will attempt to use the
+     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn} of the input {@code PCollection} to
+     * determine what windows the element should be in, throwing an exception if the {@code
+     * WindowFn} attempts to access any information about the input element except for the
      * timestamp.
      *
-     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from
-     * {@link StartBundle} or {@link FinishBundle} methods.
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from {@link StartBundle}
+     * or {@link FinishBundle} methods.
+     *
+     * @see ParDo.SingleOutput#withOutputTags
+     */
+    public abstract <T> void outputWithTimestamp(TupleTag<T> tag, T output, Instant timestamp);
+
+    /**
+     * Adds the given element to the main output {@code PCollection}.
+     *
+     * <p>Once passed to {@code output} the element should not be modified in any way.
+     *
+     * <p>If invoked from {@link ProcessElement}, the output element will have the same timestamp
+     * and be in the same windows as the input element passed to the method annotated with
+     * {@code @ProcessElement}.
+     *
+     * <p>If invoked from {@link StartBundle} or {@link FinishBundle}, this will attempt to use the
+     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn} of the input {@code PCollection} to
+     * determine what windows the element should be in, throwing an exception if the {@code
+     * WindowFn} attempts to access any information about the input element. The output element will
+     * have a timestamp of negative infinity.
+     *
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from {@link StartBundle}
+     * or {@link FinishBundle} methods.
+     */
+    public abstract void output(TenantAwareValue<OutputT> output);
+
+    /**
+     * Adds the given element to the main output {@code PCollection}, with the given timestamp.
+     *
+     * <p>Once passed to {@code outputWithTimestamp} the element should not be modified in any way.
+     *
+     * <p>If invoked from {@link ProcessElement}), the timestamp must not be older than the input
+     * element's timestamp minus {@link DoFn#getAllowedTimestampSkew}. The output element will be in
+     * the same windows as the input element.
+     *
+     * <p>If invoked from {@link StartBundle} or {@link FinishBundle}, this will attempt to use the
+     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn} of the input {@code PCollection} to
+     * determine what windows the element should be in, throwing an exception if the {@code
+     * WindowFn} attempts to access any information about the input element except for the
+     * timestamp.
+     *
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from {@link StartBundle}
+     * or {@link FinishBundle} methods.
+     */
+    public abstract void outputWithTimestamp(TenantAwareValue<OutputT> output, Instant timestamp);
+
+    /**
+     * Adds the given element to the output {@code PCollection} with the given tag.
+     *
+     * <p>Once passed to {@code output} the element should not be modified in any way.
+     *
+     * <p>The caller of {@code ParDo} uses {@link ParDo.SingleOutput#withOutputTags} to specify the
+     * tags of outputs that it consumes. Non-consumed outputs, e.g., outputs for monitoring purposes
+     * only, don't necessarily need to be specified.
+     *
+     * <p>The output element will have the same timestamp and be in the same windows as the input
+     * element passed to {@link ProcessElement}).
+     *
+     * <p>If invoked from {@link StartBundle} or {@link FinishBundle}, this will attempt to use the
+     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn} of the input {@code PCollection} to
+     * determine what windows the element should be in, throwing an exception if the {@code
+     * WindowFn} attempts to access any information about the input element. The output element will
+     * have a timestamp of negative infinity.
+     *
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from {@link StartBundle}
+     * or {@link FinishBundle} methods.
+     *
+     * @see ParDo.SingleOutput#withOutputTags
+     */
+    public abstract <T> void output(TupleTag<T> tag, TenantAwareValue<T> output);
+
+    /**
+     * Adds the given element to the specified output {@code PCollection}, with the given timestamp.
+     *
+     * <p>Once passed to {@code outputWithTimestamp} the element should not be modified in any way.
+     *
+     * <p>If invoked from {@link ProcessElement}), the timestamp must not be older than the input
+     * element's timestamp minus {@link DoFn#getAllowedTimestampSkew}. The output element will be in
+     * the same windows as the input element.
+     *
+     * <p>If invoked from {@link StartBundle} or {@link FinishBundle}, this will attempt to use the
+     * {@link org.apache.beam.sdk.transforms.windowing.WindowFn} of the input {@code PCollection} to
+     * determine what windows the element should be in, throwing an exception if the {@code
+     * WindowFn} attempts to access any information about the input element except for the
+     * timestamp.
+     *
+     * <p><i>Note:</i> A splittable {@link DoFn} is not allowed to output from {@link StartBundle}
+     * or {@link FinishBundle} methods.
      *
      * @see ParDo.SingleOutput#withOutputTags
      */
     public abstract <T> void outputWithTimestamp(
-        TupleTag<T> tag, T output, Instant timestamp);
+        TupleTag<T> tag, TenantAwareValue<T> output, Instant timestamp);
   }
 
-  /**
-   * Information accessible when running a {@link DoFn.ProcessElement} method.
-   */
+  /** Information accessible when running a {@link DoFn.ProcessElement} method. */
   public abstract class ProcessContext extends WindowedContext {
+    /** Returns the tenantId for the element to be processed. */
+    public abstract String tenantId();
 
     /**
      * Returns the input element to be processed.
      *
-     * <p>The element will not be changed -- it is safe to cache, etc.
-     * without copying.
+     * <p>The element will not be changed -- it is safe to cache, etc. without copying.
      */
     public abstract InputT element();
+
+    /** Returns a {@Code TenantAwareValue} for the current tenant and element */
+    public TenantAwareValue<InputT> tenantAwareElement() {
+      return TenantAwareValue.of(tenantId(), element());
+    }
 
     /**
      * Returns the value of the side input.
@@ -279,12 +343,11 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
     public abstract Instant timestamp();
 
     /**
-     * Returns information about the pane within this window into which the
-     * input element has been assigned.
+     * Returns information about the pane within this window into which the input element has been
+     * assigned.
      *
-     * <p>Generally all data is in a single, uninteresting pane unless custom
-     * triggering and/or late data has been explicitly requested.
-     * See {@link Window} for more information.
+     * <p>Generally all data is in a single, uninteresting pane unless custom triggering and/or late
+     * data has been explicitly requested. See {@link Window} for more information.
      */
     public abstract PaneInfo pane();
 
@@ -295,30 +358,22 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
      * <p>If the {@link DoFn} has multiple outputs, the watermark applies to all of them.
      *
      * <p>Only splittable {@link DoFn DoFns} are allowed to call this method. It is safe to call
-     * this method from a different thread than the one running {@link ProcessElement}, but
-     * all calls must finish before {@link ProcessElement} returns.
+     * this method from a different thread than the one running {@link ProcessElement}, but all
+     * calls must finish before {@link ProcessElement} returns.
      */
     public abstract void updateWatermark(Instant watermark);
   }
 
-  /**
-   * Information accessible when running a {@link DoFn.OnTimer} method.
-   */
+  /** Information accessible when running a {@link DoFn.OnTimer} method. */
   public abstract class OnTimerContext extends WindowedContext {
 
-    /**
-     * Returns the timestamp of the current timer.
-     */
+    /** Returns the timestamp of the current timer. */
     public abstract Instant timestamp();
 
-    /**
-     * Returns the window in which the timer is firing.
-     */
+    /** Returns the window in which the timer is firing. */
     public abstract BoundedWindow window();
 
-    /**
-     * Returns the time domain of the current timer.
-     */
+    /** Returns the time domain of the current timer. */
     public abstract TimeDomain timeDomain();
   }
 
@@ -330,11 +385,9 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
    * forward to future. For infinite skew, return {@code Duration.millis(Long.MAX_VALUE)}.
    *
    * @deprecated This method permits a {@link DoFn} to emit elements behind the watermark. These
-   *     elements are considered late, and if behind the
-   *     {@link Window#withAllowedLateness(Duration) allowed lateness} of a downstream
-   *     {@link PCollection} may be silently dropped. See
+   *     elements are considered late, and if behind the {@link Window#withAllowedLateness(Duration)
+   *     allowed lateness} of a downstream {@link PCollection} may be silently dropped. See
    *     https://issues.apache.org/jira/browse/BEAM-644 for details on a replacement.
-   *
    */
   @Deprecated
   public Duration getAllowedTimestampSkew() {
@@ -344,9 +397,8 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   /////////////////////////////////////////////////////////////////////////////
 
   /**
-   * Returns a {@link TypeDescriptor} capturing what is known statically
-   * about the input type of this {@code DoFn} instance's most-derived
-   * class.
+   * Returns a {@link TypeDescriptor} capturing what is known statically about the input type of
+   * this {@code DoFn} instance's most-derived class.
    *
    * <p>See {@link #getOutputTypeDescriptor} for more discussion.
    */
@@ -355,15 +407,12 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   }
 
   /**
-   * Returns a {@link TypeDescriptor} capturing what is known statically
-   * about the output type of this {@code DoFn} instance's
-   * most-derived class.
+   * Returns a {@link TypeDescriptor} capturing what is known statically about the output type of
+   * this {@code DoFn} instance's most-derived class.
    *
-   * <p>In the normal case of a concrete {@code DoFn} subclass with
-   * no generic type parameters of its own (including anonymous inner
-   * classes), this will be a complete non-generic type, which is good
-   * for choosing a default output {@code Coder<O>} for the output
-   * {@code PCollection<O>}.
+   * <p>In the normal case of a concrete {@code DoFn} subclass with no generic type parameters of
+   * its own (including anonymous inner classes), this will be a complete non-generic type, which is
+   * good for choosing a default output {@code Coder<O>} for the output {@code PCollection<O>}.
    */
   public TypeDescriptor<OutputT> getOutputTypeDescriptor() {
     return new TypeDescriptor<OutputT>(getClass()) {};
@@ -378,10 +427,10 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   /**
    * Annotation for declaring and dereferencing state cells.
    *
-   * <p>To declare a state cell, create a field of type {@link StateSpec} annotated with a
-   * {@link StateId}. To use the cell during processing, add a parameter of the appropriate {@link
-   * State} subclass to your {@link ProcessElement @ProcessElement} or {@link OnTimer @OnTimer}
-   * method, and annotate it with {@link StateId}. See the following code for an example:
+   * <p>To declare a state cell, create a field of type {@link StateSpec} annotated with a {@link
+   * StateId}. To use the cell during processing, add a parameter of the appropriate {@link State}
+   * subclass to your {@link ProcessElement @ProcessElement} or {@link OnTimer @OnTimer} method, and
+   * annotate it with {@link StateId}. See the following code for an example:
    *
    * <pre><code>{@literal new DoFn<KV<Key, Foo>, Baz>()} {
    *
@@ -402,9 +451,9 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
    * <p>State is subject to the following validity conditions:
    *
    * <ul>
-   * <li>Each state ID must be declared at most once.
-   * <li>Any state referenced in a parameter must be declared with the same state type.
-   * <li>State declarations must be final.
+   *   <li>Each state ID must be declared at most once.
+   *   <li>Any state referenced in a parameter must be declared with the same state type.
+   *   <li>State declarations must be final.
    * </ul>
    */
   @Documented
@@ -444,11 +493,11 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
    * <p>Timers are subject to the following validity conditions:
    *
    * <ul>
-   * <li>Each timer must have a distinct id.
-   * <li>Any timer referenced in a parameter must be declared.
-   * <li>Timer declarations must be final.
-   * <li>All declared timers must have a corresponding callback annotated with {@link
-   *     OnTimer @OnTimer}.
+   *   <li>Each timer must have a distinct id.
+   *   <li>Any timer referenced in a parameter must be declared.
+   *   <li>Timer declarations must be final.
+   *   <li>All declared timers must have a corresponding callback annotated with {@link
+   *       OnTimer @OnTimer}.
    * </ul>
    */
   @Documented
@@ -482,6 +531,7 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   /**
    * Annotation for the method to use to prepare an instance for processing bundles of elements. The
    * method annotated with this must satisfy the following constraints
+   *
    * <ul>
    *   <li>It must have zero arguments.
    * </ul>
@@ -489,12 +539,12 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   @Documented
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.METHOD)
-  public @interface Setup {
-  }
+  public @interface Setup {}
 
   /**
-   * Annotation for the method to use to prepare an instance for processing a batch of elements.
-   * The method annotated with this must satisfy the following constraints:
+   * Annotation for the method to use to prepare an instance for processing a batch of elements. The
+   * method annotated with this must satisfy the following constraints:
+   *
    * <ul>
    *   <li>It must have exactly zero or one arguments.
    *   <li>If it has any arguments, its only argument must be a {@link DoFn.StartBundleContext}.
@@ -512,16 +562,16 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
    * <p>The signature of this method must satisfy the following constraints:
    *
    * <ul>
-   * <li>Its first argument must be a {@link DoFn.ProcessContext}.
-   * <li>If one of its arguments is a subtype of {@link RestrictionTracker}, then it is a <a
-   *     href="https://s.apache.org/splittable-do-fn">splittable</a> {@link DoFn} subject to the
-   *     separate requirements described below. Items below are assuming this is not a splittable
-   *     {@link DoFn}.
-   * <li>If one of its arguments is a subtype of {@link BoundedWindow} then it will
-   *     be passed the window of the current element. When applied by {@link ParDo} the subtype
-   *     of {@link BoundedWindow} must match the type of windows on the input {@link PCollection}.
-   *     If the window is not accessed a runner may perform additional optimizations.
-   * <li>It must return {@code void}.
+   *   <li>Its first argument must be a {@link DoFn.ProcessContext}.
+   *   <li>If one of its arguments is a subtype of {@link RestrictionTracker}, then it is a <a
+   *       href="https://s.apache.org/splittable-do-fn">splittable</a> {@link DoFn} subject to the
+   *       separate requirements described below. Items below are assuming this is not a splittable
+   *       {@link DoFn}.
+   *   <li>If one of its arguments is a subtype of {@link BoundedWindow} then it will be passed the
+   *       window of the current element. When applied by {@link ParDo} the subtype of {@link
+   *       BoundedWindow} must match the type of windows on the input {@link PCollection}. If the
+   *       window is not accessed a runner may perform additional optimizations.
+   *   <li>It must return {@code void}.
    * </ul>
    *
    * <h2>Splittable DoFn's</h2>
@@ -530,9 +580,8 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
    * whose type is a subtype of {@link RestrictionTracker}. This is an advanced feature and an
    * overwhelming majority of users will never need to write a splittable {@link DoFn}.
    *
-   * <p>Not all runners support Splittable DoFn. See the
-   * <a href="https://beam.apache.org/documentation/runners/capability-matrix/">capability
-   * matrix</a>.
+   * <p>Not all runners support Splittable DoFn. See the <a
+   * href="https://beam.apache.org/documentation/runners/capability-matrix/">capability matrix</a>.
    *
    * <p>See <a href="https://s.apache.org/splittable-do-fn">the proposal</a> for an overview of the
    * involved concepts (<i>splittable DoFn</i>, <i>restriction</i>, <i>restriction tracker</i>).
@@ -540,24 +589,25 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
    * <p>If a {@link DoFn} is splittable, the following constraints must be respected:
    *
    * <ul>
-   * <li>It <i>must</i> define a {@link GetInitialRestriction} method.
-   * <li>It <i>may</i> define a {@link SplitRestriction} method.
-   * <li>It <i>may</i> define a {@link NewTracker} method returning the same type as the type of
-   *     the {@link RestrictionTracker} argument of {@link ProcessElement}, which in turn must be a
-   *     subtype of {@code RestrictionTracker<R>} where {@code R} is the restriction type returned
-   *     by {@link GetInitialRestriction}. This method is optional in case the restriction type
-   *     returned by {@link GetInitialRestriction} implements {@link HasDefaultTracker}.
-   * <li>It <i>may</i> define a {@link GetRestrictionCoder} method.
-   * <li>The type of restrictions used by all of these methods must be the same.
-   * <li>Its {@link ProcessElement} method <i>may</i> return a {@link ProcessContinuation} to
-   *     indicate whether there is more work to be done for the current element.
-   * <li>Its {@link ProcessElement} method <i>must not</i> use any extra context parameters, such as
-   *     {@link BoundedWindow}.
-   * <li>The {@link DoFn} itself <i>may</i> be annotated with {@link BoundedPerElement} or
-   *     {@link UnboundedPerElement}, but not both at the same time. If it's not annotated with
-   *     either of these, it's assumed to be {@link BoundedPerElement} if its {@link
-   *     ProcessElement} method returns {@code void} and {@link UnboundedPerElement} if it
-   *     returns a {@link ProcessContinuation}.
+   *   <li>It <i>must</i> define a {@link GetInitialRestriction} method.
+   *   <li>It <i>may</i> define a {@link SplitRestriction} method.
+   *   <li>It <i>may</i> define a {@link NewTracker} method returning the same type as the type of
+   *       the {@link RestrictionTracker} argument of {@link ProcessElement}, which in turn must be
+   *       a subtype of {@code RestrictionTracker<R>} where {@code R} is the restriction type
+   *       returned by {@link GetInitialRestriction}. This method is optional in case the
+   *       restriction type returned by {@link GetInitialRestriction} implements {@link
+   *       HasDefaultTracker}.
+   *   <li>It <i>may</i> define a {@link GetRestrictionCoder} method.
+   *   <li>The type of restrictions used by all of these methods must be the same.
+   *   <li>Its {@link ProcessElement} method <i>may</i> return a {@link ProcessContinuation} to
+   *       indicate whether there is more work to be done for the current element.
+   *   <li>Its {@link ProcessElement} method <i>must not</i> use any extra context parameters, such
+   *       as {@link BoundedWindow}.
+   *   <li>The {@link DoFn} itself <i>may</i> be annotated with {@link BoundedPerElement} or {@link
+   *       UnboundedPerElement}, but not both at the same time. If it's not annotated with either of
+   *       these, it's assumed to be {@link BoundedPerElement} if its {@link ProcessElement} method
+   *       returns {@code void} and {@link UnboundedPerElement} if it returns a {@link
+   *       ProcessContinuation}.
    * </ul>
    *
    * <p>A non-splittable {@link DoFn} <i>must not</i> define any of these methods.
@@ -591,8 +641,9 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   public @interface RequiresStableInput {}
 
   /**
-   * Annotation for the method to use to finish processing a batch of elements.
-   * The method annotated with this must satisfy the following constraints:
+   * Annotation for the method to use to finish processing a batch of elements. The method annotated
+   * with this must satisfy the following constraints:
+   *
    * <ul>
    *   <li>It must have exactly zero or one arguments.
    *   <li>If it has any arguments, its only argument must be a {@link DoFn.FinishBundleContext}.
@@ -603,11 +654,11 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   @Target(ElementType.METHOD)
   public @interface FinishBundle {}
 
-
   /**
    * Annotation for the method to use to clean up this instance after processing bundles of
-   * elements. No other method will be called after a call to the annotated method is made.
-   * The method annotated with this must satisfy the following constraint:
+   * elements. No other method will be called after a call to the annotated method is made. The
+   * method annotated with this must satisfy the following constraint:
+   *
    * <ul>
    *   <li>It must have zero arguments.
    * </ul>
@@ -615,8 +666,7 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   @Documented
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.METHOD)
-  public @interface Teardown {
-  }
+  public @interface Teardown {}
 
   /**
    * Annotation for the method that maps an element to an initial restriction for a <a
@@ -715,8 +765,8 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
    * When used as a return value of {@link ProcessElement}, indicates whether there is more work to
    * be done for the current element.
    *
-   * <p>If the {@link ProcessElement} call completes because of a failed {@code tryClaim()} call
-   * on the {@link RestrictionTracker}, then the call MUST return {@link #stop()}.
+   * <p>If the {@link ProcessElement} call completes because of a failed {@code tryClaim()} call on
+   * the {@link RestrictionTracker}, then the call MUST return {@link #stop()}.
    */
   @Experimental(Kind.SPLITTABLE_DO_FN)
   @AutoValue
@@ -750,11 +800,11 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   }
 
   /**
-   * Finalize the {@link DoFn} construction to prepare for processing.
-   * This method should be called by runners before any processing methods.
+   * Finalize the {@link DoFn} construction to prepare for processing. This method should be called
+   * by runners before any processing methods.
    *
    * @deprecated use {@link Setup} or {@link StartBundle} instead. This method will be removed in a
-   * future release.
+   *     future release.
    */
   @Deprecated
   public final void prepareForProcessing() {}
@@ -762,10 +812,9 @@ public abstract class DoFn<InputT, OutputT> implements Serializable, HasDisplayD
   /**
    * {@inheritDoc}
    *
-   * <p>By default, does not register any display data. Implementors may override this method
-   * to provide their own display data.
+   * <p>By default, does not register any display data. Implementors may override this method to
+   * provide their own display data.
    */
   @Override
-  public void populateDisplayData(DisplayData.Builder builder) {
-  }
+  public void populateDisplayData(DisplayData.Builder builder) {}
 }

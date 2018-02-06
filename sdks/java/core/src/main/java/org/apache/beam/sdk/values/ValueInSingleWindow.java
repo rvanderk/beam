@@ -28,6 +28,7 @@ import org.apache.beam.sdk.coders.InstantCoder;
 import org.apache.beam.sdk.coders.StructuredCoder;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.transforms.windowing.PaneInfo;
+import org.apache.beam.sdk.values.TenantAwareValue.TenantAwareValueCoder;
 import org.joda.time.Instant;
 
 /**
@@ -39,7 +40,7 @@ import org.joda.time.Instant;
 public abstract class ValueInSingleWindow<T> {
   /** Returns the value of this {@code ValueInSingleWindow}. */
   @Nullable
-  public abstract T getValue();
+  public abstract TenantAwareValue<T> getValue();
 
   /** Returns the timestamp of this {@code ValueInSingleWindow}. */
   public abstract Instant getTimestamp();
@@ -51,13 +52,13 @@ public abstract class ValueInSingleWindow<T> {
   public abstract PaneInfo getPane();
 
   public static <T> ValueInSingleWindow<T> of(
-      T value, Instant timestamp, BoundedWindow window, PaneInfo paneInfo) {
+      TenantAwareValue<T> value, Instant timestamp, BoundedWindow window, PaneInfo paneInfo) {
     return new AutoValue_ValueInSingleWindow<>(value, timestamp, window, paneInfo);
   }
 
   /** A coder for {@link ValueInSingleWindow}. */
   public static class Coder<T> extends StructuredCoder<ValueInSingleWindow<T>> {
-    private final org.apache.beam.sdk.coders.Coder<T> valueCoder;
+    private final TenantAwareValueCoder<T> valueCoder;
     private final org.apache.beam.sdk.coders.Coder<BoundedWindow> windowCoder;
 
     public static <T> Coder<T> of(
@@ -70,7 +71,7 @@ public abstract class ValueInSingleWindow<T> {
     Coder(
         org.apache.beam.sdk.coders.Coder<T> valueCoder,
         org.apache.beam.sdk.coders.Coder<? extends BoundedWindow> windowCoder) {
-      this.valueCoder = valueCoder;
+      this.valueCoder = TenantAwareValueCoder.of(valueCoder);
       this.windowCoder = (org.apache.beam.sdk.coders.Coder) windowCoder;
     }
 
@@ -99,7 +100,7 @@ public abstract class ValueInSingleWindow<T> {
       Instant timestamp = InstantCoder.of().decode(inStream);
       BoundedWindow window = windowCoder.decode(inStream);
       PaneInfo pane = PaneInfo.PaneInfoCoder.INSTANCE.decode(inStream);
-      T value = valueCoder.decode(inStream, context);
+      TenantAwareValue<T> value = valueCoder.decode(inStream, context);
       return new AutoValue_ValueInSingleWindow<>(value, timestamp, window, pane);
     }
 

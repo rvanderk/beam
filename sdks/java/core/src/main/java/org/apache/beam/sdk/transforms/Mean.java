@@ -29,36 +29,37 @@ import org.apache.beam.sdk.coders.CoderException;
 import org.apache.beam.sdk.coders.CoderRegistry;
 import org.apache.beam.sdk.coders.DoubleCoder;
 import org.apache.beam.sdk.transforms.Combine.AccumulatingCombineFn.Accumulator;
+import org.apache.beam.sdk.values.TenantAwareValue;
+import org.apache.beam.sdk.values.TenantAwareValue.TenantAwareValueCoder;
 
 /**
- * {@code PTransform}s for computing the arithmetic mean
- * (a.k.a. average) of the elements in a {@code PCollection}, or the
- * mean of the values associated with each key in a
- * {@code PCollection} of {@code KV}s.
+ * {@code PTransform}s for computing the arithmetic mean (a.k.a. average) of the elements in a
+ * {@code PCollection}, or the mean of the values associated with each key in a {@code PCollection}
+ * of {@code KV}s.
  *
  * <p>Example 1: get the mean of a {@code PCollection} of {@code Long}s.
- * <pre> {@code
+ *
+ * <pre>{@code
  * PCollection<Long> input = ...;
  * PCollection<Double> mean = input.apply(Mean.<Long>globally());
- * } </pre>
+ * }</pre>
  *
- * <p>Example 2: calculate the mean of the {@code Integer}s
- * associated with each unique key (which is of type {@code String}).
- * <pre> {@code
+ * <p>Example 2: calculate the mean of the {@code Integer}s associated with each unique key (which
+ * is of type {@code String}).
+ *
+ * <pre>{@code
  * PCollection<KV<String, Integer>> input = ...;
  * PCollection<KV<String, Double>> meanPerKey =
  *     input.apply(Mean.<String, Integer>perKey());
- * } </pre>
+ * }</pre>
  */
 public class Mean {
 
-  private Mean() { } // Namespace only
+  private Mean() {} // Namespace only
 
   /**
-   * Returns a {@code PTransform} that takes an input
-   * {@code PCollection<NumT>} and returns a
-   * {@code PCollection<Double>} whose contents is the mean of the
-   * input {@code PCollection}'s elements, or
+   * Returns a {@code PTransform} that takes an input {@code PCollection<NumT>} and returns a {@code
+   * PCollection<Double>} whose contents is the mean of the input {@code PCollection}'s elements, or
    * {@code 0} if there are no elements.
    *
    * @param <NumT> the type of the {@code Number}s being combined
@@ -68,12 +69,10 @@ public class Mean {
   }
 
   /**
-   * Returns a {@code PTransform} that takes an input
-   * {@code PCollection<KV<K, N>>} and returns a
-   * {@code PCollection<KV<K, Double>>} that contains an output
-   * element mapping each distinct key in the input
-   * {@code PCollection} to the mean of the values associated with
-   * that key in the input {@code PCollection}.
+   * Returns a {@code PTransform} that takes an input {@code PCollection<KV<K, N>>} and returns a
+   * {@code PCollection<KV<K, Double>>} that contains an output element mapping each distinct key in
+   * the input {@code PCollection} to the mean of the values associated with that key in the input
+   * {@code PCollection}.
    *
    * <p>See {@link Combine.PerKey} for how this affects timestamps and bucketing.
    *
@@ -85,9 +84,8 @@ public class Mean {
   }
 
   /**
-   * A {@code Combine.CombineFn} that computes the arithmetic mean
-   * (a.k.a. average) of an {@code Iterable} of numbers of type
-   * {@code N}, useful as an argument to {@link Combine#globally} or
+   * A {@code Combine.CombineFn} that computes the arithmetic mean (a.k.a. average) of an {@code
+   * Iterable} of numbers of type {@code N}, useful as an argument to {@link Combine#globally} or
    * {@link Combine#perKey}.
    *
    * <p>Returns {@code Double.NaN} if combining zero elements.
@@ -95,37 +93,33 @@ public class Mean {
    * @param <NumT> the type of the {@code Number}s being combined
    */
   public static <NumT extends Number>
-  Combine.AccumulatingCombineFn<NumT, CountSum<NumT>, Double> of() {
+      Combine.AccumulatingCombineFn<NumT, CountSum<NumT>, Double> of() {
     return new MeanFn<>();
   }
 
   /////////////////////////////////////////////////////////////////////////////
 
   private static class MeanFn<NumT extends Number>
-  extends Combine.AccumulatingCombineFn<NumT, CountSum<NumT>, Double> {
+      extends Combine.AccumulatingCombineFn<NumT, CountSum<NumT>, Double> {
     /**
-     * Constructs a combining function that computes the mean over
-     * a collection of values of type {@code N}.
+     * Constructs a combining function that computes the mean over a collection of values of type
+     * {@code N}.
      */
-
     @Override
-    public CountSum<NumT> createAccumulator() {
-      return new CountSum<>();
+    public TenantAwareValue<CountSum<NumT>> createAccumulator() {
+      return TenantAwareValue.of(TenantAwareValue.NULL_TENANT, new CountSum<>());
     }
 
     @Override
-    public Coder<CountSum<NumT>> getAccumulatorCoder(
+    public TenantAwareValueCoder<CountSum<NumT>> getAccumulatorCoder(
         CoderRegistry registry, Coder<NumT> inputCoder) {
-      return new CountSumCoder<>();
+      return TenantAwareValueCoder.of(new CountSumCoder<>());
     }
   }
 
-  /**
-   * Accumulator class for {@link MeanFn}.
-   */
-  static class CountSum<NumT extends Number>
-  implements Accumulator<NumT, CountSum<NumT>, Double> {
-
+  /** Accumulator class for {@link MeanFn}. */
+  static class CountSum<NumT extends Number> implements Accumulator<NumT, CountSum<NumT>, Double> {
+    String tenantId = TenantAwareValue.NULL_TENANT;
     long count = 0;
     double sum = 0.0;
 
@@ -139,9 +133,10 @@ public class Mean {
     }
 
     @Override
-    public void addInput(NumT element) {
+    public void addInput(TenantAwareValue<NumT> element) {
       count++;
-      sum += element.doubleValue();
+      tenantId = element.getTenantId();
+      sum += element.getValue().doubleValue();
     }
 
     @Override
@@ -151,14 +146,14 @@ public class Mean {
     }
 
     @Override
-    public Double extractOutput() {
-      return count == 0 ? Double.NaN : sum / count;
+    public TenantAwareValue<Double> extractOutput() {
+      return TenantAwareValue.of(tenantId, count == 0 ? Double.NaN : sum / count);
     }
 
     @Override
     @edu.umd.cs.findbugs.annotations.SuppressWarnings(
-        value = "FE_FLOATING_POINT_EQUALITY",
-        justification = "Comparing doubles directly since equals method is only used in coder test."
+      value = "FE_FLOATING_POINT_EQUALITY",
+      justification = "Comparing doubles directly since equals method is only used in coder test."
     )
     public boolean equals(Object other) {
       if (!(other instanceof CountSum)) {
@@ -166,8 +161,7 @@ public class Mean {
       }
       @SuppressWarnings("unchecked")
       CountSum<?> otherCountSum = (CountSum<?>) other;
-      return (count == otherCountSum.count)
-          && (sum == otherCountSum.sum);
+      return (count == otherCountSum.count) && (sum == otherCountSum.sum);
     }
 
     @Override
@@ -177,36 +171,30 @@ public class Mean {
 
     @Override
     public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("count", count)
-          .add("sum", sum)
-          .toString();
+      return MoreObjects.toStringHelper(this).add("count", count).add("sum", sum).toString();
     }
   }
 
   static class CountSumCoder<NumT extends Number> extends AtomicCoder<CountSum<NumT>> {
     private static final Coder<Long> LONG_CODER = BigEndianLongCoder.of();
-     private static final Coder<Double> DOUBLE_CODER = DoubleCoder.of();
+    private static final Coder<Double> DOUBLE_CODER = DoubleCoder.of();
 
-     @Override
-     public void encode(CountSum<NumT> value, OutputStream outStream)
-         throws CoderException, IOException {
-       LONG_CODER.encode(value.count, outStream);
-       DOUBLE_CODER.encode(value.sum, outStream);
-     }
+    @Override
+    public void encode(CountSum<NumT> value, OutputStream outStream)
+        throws CoderException, IOException {
+      LONG_CODER.encode(value.count, outStream);
+      DOUBLE_CODER.encode(value.sum, outStream);
+    }
 
-     @Override
-     public CountSum<NumT> decode(InputStream inStream)
-         throws CoderException, IOException {
-       return new CountSum<>(
-           LONG_CODER.decode(inStream),
-           DOUBLE_CODER.decode(inStream));
+    @Override
+    public CountSum<NumT> decode(InputStream inStream) throws CoderException, IOException {
+      return new CountSum<>(LONG_CODER.decode(inStream), DOUBLE_CODER.decode(inStream));
     }
 
     @Override
     public void verifyDeterministic() throws NonDeterministicException {
-       LONG_CODER.verifyDeterministic();
-       DOUBLE_CODER.verifyDeterministic();
+      LONG_CODER.verifyDeterministic();
+      DOUBLE_CODER.verifyDeterministic();
     }
   }
 }

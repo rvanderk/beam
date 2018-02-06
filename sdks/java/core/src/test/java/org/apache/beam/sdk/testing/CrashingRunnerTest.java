@@ -26,19 +26,17 @@ import org.apache.beam.sdk.PipelineRunner;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.transforms.Create;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for {@link CrashingRunner}.
- */
+/** Tests for {@link CrashingRunner}. */
 @RunWith(JUnit4.class)
 public class CrashingRunnerTest {
-  @Rule
-  public ExpectedException thrown = ExpectedException.none();
+  @Rule public ExpectedException thrown = ExpectedException.none();
 
   @Test
   public void fromOptionsCreatesInstance() {
@@ -55,7 +53,11 @@ public class CrashingRunnerTest {
     opts.setRunner(CrashingRunner.class);
 
     Pipeline p = Pipeline.create(opts);
-    p.apply(Create.of(1, 2, 3));
+    p.apply(
+        Create.of(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3)));
   }
 
   @Test
@@ -64,7 +66,11 @@ public class CrashingRunnerTest {
     opts.setRunner(CrashingRunner.class);
 
     Pipeline p = Pipeline.create(opts);
-    p.apply(Create.of(1, 2, 3));
+    p.apply(
+        Create.of(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3)));
 
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Cannot call #run");

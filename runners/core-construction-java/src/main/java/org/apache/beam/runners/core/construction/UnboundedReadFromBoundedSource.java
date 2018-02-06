@@ -50,6 +50,7 @@ import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.util.NameUtils;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TimestampedValue;
 import org.joda.time.Instant;
 import org.slf4j.Logger;
@@ -58,18 +59,17 @@ import org.slf4j.LoggerFactory;
 /**
  * {@link PTransform} that converts a {@link BoundedSource} as an {@link UnboundedSource}.
  *
- * <p>{@link BoundedSource} is read directly without calling {@link BoundedSource#split},
- * and element timestamps are propagated. While any elements remain, the watermark is the beginning
- * of time {@link BoundedWindow#TIMESTAMP_MIN_VALUE}, and after all elements have been produced
- * the watermark goes to the end of time {@link BoundedWindow#TIMESTAMP_MAX_VALUE}.
+ * <p>{@link BoundedSource} is read directly without calling {@link BoundedSource#split}, and
+ * element timestamps are propagated. While any elements remain, the watermark is the beginning of
+ * time {@link BoundedWindow#TIMESTAMP_MIN_VALUE}, and after all elements have been produced the
+ * watermark goes to the end of time {@link BoundedWindow#TIMESTAMP_MAX_VALUE}.
  *
- * <p>Checkpoints are created by calling {@link BoundedReader#splitAtFraction} on inner
- * {@link BoundedSource}.
- * Sources that cannot be split are read entirely into memory, so this transform does not work well
- * with large, unsplittable sources.
+ * <p>Checkpoints are created by calling {@link BoundedReader#splitAtFraction} on inner {@link
+ * BoundedSource}. Sources that cannot be split are read entirely into memory, so this transform
+ * does not work well with large, unsplittable sources.
  *
- * <p>This transform is intended to be used by a runner during pipeline translation to convert
- * a Read.Bounded into a Read.Unbounded.
+ * <p>This transform is intended to be used by a runner during pipeline translation to convert a
+ * Read.Bounded into a Read.Unbounded.
  */
 public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PCollection<T>> {
 
@@ -86,8 +86,7 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
 
   @Override
   public PCollection<T> expand(PBegin input) {
-    return input.getPipeline().apply(
-        Read.from(new BoundedToUnboundedSourceAdapter<>(source)));
+    return input.getPipeline().apply(Read.from(new BoundedToUnboundedSourceAdapter<>(source)));
   }
 
   @Override
@@ -103,14 +102,10 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
   @Override
   public void populateDisplayData(DisplayData.Builder builder) {
     // We explicitly do not register base-class data, instead we use the delegate inner source.
-    builder
-        .add(DisplayData.item("source", source.getClass()))
-        .include("source", source);
+    builder.add(DisplayData.item("source", source.getClass())).include("source", source);
   }
 
-  /**
-   * A {@code BoundedSource} to {@code UnboundedSource} adapter.
-   */
+  /** A {@code BoundedSource} to {@code UnboundedSource} adapter. */
   @VisibleForTesting
   public static class BoundedToUnboundedSourceAdapter<T>
       extends UnboundedSource<T, BoundedToUnboundedSourceAdapter.Checkpoint<T>> {
@@ -132,12 +127,12 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
       try {
         long desiredBundleSize = boundedSource.getEstimatedSizeBytes(options) / desiredNumSplits;
         if (desiredBundleSize <= 0) {
-          LOG.warn("BoundedSource {} cannot estimate its size, skips the initial splits.",
+          LOG.warn(
+              "BoundedSource {} cannot estimate its size, skips the initial splits.",
               boundedSource);
           return ImmutableList.of(this);
         }
-        List<? extends BoundedSource<T>> splits =
-            boundedSource.split(desiredBundleSize, options);
+        List<? extends BoundedSource<T>> splits = boundedSource.split(desiredBundleSize, options);
         return splits
             .stream()
             .map(input -> new BoundedToUnboundedSourceAdapter<>(input))
@@ -185,12 +180,14 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
       public void finalizeCheckpoint() {}
 
       @VisibleForTesting
-      @Nullable List<TimestampedValue<T>> getResidualElements() {
+      @Nullable
+      List<TimestampedValue<T>> getResidualElements() {
         return residualElements;
       }
 
       @VisibleForTesting
-      @Nullable BoundedSource<T> getResidualSource() {
+      @Nullable
+      BoundedSource<T> getResidualSource() {
         return residualSource;
       }
     }
@@ -207,8 +204,8 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
       private final Coder<BoundedSource> sourceCoder;
 
       CheckpointCoder(Coder<T> elemCoder) {
-        this.elemsCoder = NullableCoder.of(
-            ListCoder.of(TimestampedValue.TimestampedValueCoder.of(elemCoder)));
+        this.elemsCoder =
+            NullableCoder.of(ListCoder.of(TimestampedValue.TimestampedValueCoder.of(elemCoder)));
         this.elemCoder = elemCoder;
         this.sourceCoder = NullableCoder.of(SerializableCoder.of(BoundedSource.class));
       }
@@ -222,11 +219,8 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
 
       @SuppressWarnings("unchecked")
       @Override
-      public Checkpoint<T> decode(InputStream inStream)
-          throws CoderException, IOException {
-        return new Checkpoint<>(
-            elemsCoder.decode(inStream),
-            sourceCoder.decode(inStream));
+      public Checkpoint<T> decode(InputStream inStream) throws CoderException, IOException {
+        return new Checkpoint<>(elemsCoder.decode(inStream), sourceCoder.decode(inStream));
       }
 
       @Override
@@ -236,14 +230,14 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
 
       @Override
       public void verifyDeterministic() throws NonDeterministicException {
-        throw new NonDeterministicException(this,
-            "CheckpointCoder uses Java Serialization, which may be non-deterministic.");
+        throw new NonDeterministicException(
+            this, "CheckpointCoder uses Java Serialization, which may be non-deterministic.");
       }
     }
 
     /**
-     * An {@code UnboundedReader<T>} that wraps a {@code BoundedSource<T>} into
-     * {@link ResidualElements} and {@link ResidualSource}.
+     * An {@code UnboundedReader<T>} that wraps a {@code BoundedSource<T>} into {@link
+     * ResidualElements} and {@link ResidualSource}.
      *
      * <p>In the initial state, {@link ResidualElements} is null and {@link ResidualSource} contains
      * the {@code BoundedSource<T>}. After the first checkpoint, the {@code BoundedSource<T>} will
@@ -314,6 +308,11 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
       }
 
       @Override
+      public String getCurrentTenantId() {
+        return TenantAwareValue.NULL_TENANT;
+      }
+
+      @Override
       public Instant getCurrentTimestamp() throws NoSuchElementException {
         if (residualElements.hasCurrent()) {
           return residualElements.getCurrentTimestamp();
@@ -332,17 +331,15 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
       /**
        * {@inheritDoc}
        *
-       * <p>If only part of the {@link ResidualElements} is consumed, the new
-       * checkpoint will contain the remaining elements in {@link ResidualElements} and
-       * the {@link ResidualSource}.
+       * <p>If only part of the {@link ResidualElements} is consumed, the new checkpoint will
+       * contain the remaining elements in {@link ResidualElements} and the {@link ResidualSource}.
        *
-       * <p>If all {@link ResidualElements} and part of the
-       * {@link ResidualSource} are consumed, the new checkpoint is done by splitting
-       * {@link ResidualSource} into new {@link ResidualElements} and {@link ResidualSource}.
-       * {@link ResidualSource} is the source split from the current source,
-       * and {@link ResidualElements} contains rest elements from the current source after
-       * the splitting. For unsplittable source, it will put all remaining elements into
-       * the {@link ResidualElements}.
+       * <p>If all {@link ResidualElements} and part of the {@link ResidualSource} are consumed, the
+       * new checkpoint is done by splitting {@link ResidualSource} into new {@link
+       * ResidualElements} and {@link ResidualSource}. {@link ResidualSource} is the source split
+       * from the current source, and {@link ResidualElements} contains rest elements from the
+       * current source after the splitting. For unsplittable source, it will put all remaining
+       * elements into the {@link ResidualElements}.
        */
       @Override
       public Checkpoint<T> getCheckpointMark() {
@@ -350,9 +347,10 @@ public class UnboundedReadFromBoundedSource<T> extends PTransform<PBegin, PColle
         if (!residualElements.done()) {
           // Part of residualElements are consumed.
           // Checkpoints the remaining elements and residualSource.
-          newCheckpoint = new Checkpoint<>(
-              residualElements.getRestElements(),
-              residualSource == null ? null : residualSource.getSource());
+          newCheckpoint =
+              new Checkpoint<>(
+                  residualElements.getRestElements(),
+                  residualSource == null ? null : residualSource.getSource());
         } else if (residualSource != null) {
           newCheckpoint = residualSource.getCheckpointMark();
         } else {

@@ -47,6 +47,7 @@ import org.apache.beam.sdk.values.PCollectionTuple;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.PCollectionViews;
 import org.apache.beam.sdk.values.PValue;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.TupleTagList;
 import org.apache.beam.sdk.values.WindowingStrategy;
@@ -57,12 +58,12 @@ import org.apache.beam.sdk.values.WindowingStrategy;
  * network of simpler transforms:
  *
  * <ol>
- * <li>Pair each element with an initial restriction
- * <li>Split each restriction into sub-restrictions
- * <li>Explode windows, since splitting within each window has to happen independently
- * <li>Assign a unique key to each element/restriction pair
- * <li>Process the keyed element/restriction pairs in a runner-specific way with the splittable
- *     {@link DoFn}'s {@link DoFn.ProcessElement} method.
+ *   <li>Pair each element with an initial restriction
+ *   <li>Split each restriction into sub-restrictions
+ *   <li>Explode windows, since splitting within each window has to happen independently
+ *   <li>Assign a unique key to each element/restriction pair
+ *   <li>Process the keyed element/restriction pairs in a runner-specific way with the splittable
+ *       {@link DoFn}'s {@link DoFn.ProcessElement} method.
  * </ol>
  *
  * <p>This transform is intended as a helper for internal use by runners when implementing {@code
@@ -309,8 +310,8 @@ public class SplittableParDo<InputT, OutputT, RestrictionT>
    */
   private static class RandomUniqueKeyFn<T> implements SerializableFunction<T, String> {
     @Override
-    public String apply(T input) {
-      return UUID.randomUUID().toString();
+    public TenantAwareValue<String> apply(TenantAwareValue<T> input) {
+      return TenantAwareValue.of(input.getTenantId(), UUID.randomUUID().toString());
     }
   }
 

@@ -18,6 +18,7 @@
 package org.apache.beam.sdk.io.jms;
 
 import static com.google.common.base.Preconditions.checkArgument;
+
 import com.google.auto.value.AutoValue;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.IOException;
@@ -53,27 +54,26 @@ import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PDone;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 /**
  * An unbounded source for JMS destinations (queues or topics).
  *
  * <h3>Reading from a JMS destination</h3>
  *
- * <p>JmsIO source returns unbounded collection of JMS records as {@code PCollection<JmsRecord>}.
- * A {@link JmsRecord} includes JMS headers and properties,
- * along with the JMS {@link javax.jms.TextMessage} payload.</p>
+ * <p>JmsIO source returns unbounded collection of JMS records as {@code PCollection<JmsRecord>}. A
+ * {@link JmsRecord} includes JMS headers and properties, along with the JMS {@link
+ * javax.jms.TextMessage} payload.
  *
- * <p>To configure a JMS source, you have to provide a {@link javax.jms.ConnectionFactory}
- * and the destination (queue or topic) where to consume. The following example
- * illustrates various options for configuring the source:</p>
+ * <p>To configure a JMS source, you have to provide a {@link javax.jms.ConnectionFactory} and the
+ * destination (queue or topic) where to consume. The following example illustrates various options
+ * for configuring the source:
  *
  * <pre>{@code
- *
  * pipeline.apply(JmsIO.read()
  *    .withConnectionFactory(myConnectionFactory)
  *    .withQueue("my-queue")
@@ -83,11 +83,10 @@ import org.slf4j.LoggerFactory;
  *
  * }</pre>
  *
- * <p>It is possible to read any type of JMS {@link javax.jms.Message} into a custom POJO
- * using the following configuration:</p>
+ * <p>It is possible to read any type of JMS {@link javax.jms.Message} into a custom POJO using the
+ * following configuration:
  *
  * <pre>{@code
- *
  * pipeline.apply(JmsIO.<T>readMessage()
  *    .withConnectionFactory(myConnectionFactory)
  *    .withQueue("my-queue")
@@ -102,18 +101,16 @@ import org.slf4j.LoggerFactory;
  *
  * <h3>Writing to a JMS destination</h3>
  *
- * <p>JmsIO sink supports writing text messages to a JMS destination on a broker.
- * To configure a JMS sink, you must specify a {@link javax.jms.ConnectionFactory} and a
- * {@link javax.jms.Destination} name.
- * For instance:
+ * <p>JmsIO sink supports writing text messages to a JMS destination on a broker. To configure a JMS
+ * sink, you must specify a {@link javax.jms.ConnectionFactory} and a {@link javax.jms.Destination}
+ * name. For instance:
  *
  * <pre>{@code
- *
- *  pipeline
- *    .apply(...) // returns PCollection<String>
- *    .apply(JmsIO.write()
- *        .withConnectionFactory(myConnectionFactory)
- *        .withQueue("my-queue")
+ * pipeline
+ *   .apply(...) // returns PCollection<String>
+ *   .apply(JmsIO.write()
+ *       .withConnectionFactory(myConnectionFactory)
+ *       .withQueue("my-queue")
  *
  * }</pre>
  */
@@ -124,31 +121,42 @@ public class JmsIO {
 
   public static Read<JmsRecord> read() {
     return new AutoValue_JmsIO_Read.Builder<JmsRecord>()
-            .setMaxNumRecords(Long.MAX_VALUE)
-            .setCoder(SerializableCoder.of(JmsRecord.class))
-            .setMessageMapper((MessageMapper<JmsRecord>) new MessageMapper<JmsRecord>() {
+        .setMaxNumRecords(Long.MAX_VALUE)
+        .setCoder(SerializableCoder.of(JmsRecord.class))
+        .setMessageMapper(
+            (MessageMapper<JmsRecord>)
+                new MessageMapper<JmsRecord>() {
 
-              @Override public JmsRecord mapMessage(Message message) throws Exception {
-                TextMessage textMessage = (TextMessage) message;
-                Map<String, Object> properties = new HashMap<>();
-                @SuppressWarnings("rawtypes") Enumeration propertyNames = textMessage
-                    .getPropertyNames();
-                while (propertyNames.hasMoreElements()) {
-                  String propertyName = (String) propertyNames.nextElement();
-                  properties.put(propertyName, textMessage.getObjectProperty(propertyName));
-                }
+                  @Override
+                  public JmsRecord mapMessage(Message message) throws Exception {
+                    TextMessage textMessage = (TextMessage) message;
+                    Map<String, Object> properties = new HashMap<>();
+                    @SuppressWarnings("rawtypes")
+                    Enumeration propertyNames = textMessage.getPropertyNames();
+                    while (propertyNames.hasMoreElements()) {
+                      String propertyName = (String) propertyNames.nextElement();
+                      properties.put(propertyName, textMessage.getObjectProperty(propertyName));
+                    }
 
-                JmsRecord jmsRecord = new JmsRecord(textMessage.getJMSMessageID(),
-                    textMessage.getJMSTimestamp(), textMessage.getJMSCorrelationID(),
-                    textMessage.getJMSReplyTo(), textMessage.getJMSDestination(),
-                    textMessage.getJMSDeliveryMode(), textMessage.getJMSRedelivered(),
-                    textMessage.getJMSType(), textMessage.getJMSExpiration(),
-                    textMessage.getJMSPriority(), properties, textMessage.getText());
+                    JmsRecord jmsRecord =
+                        new JmsRecord(
+                            textMessage.getJMSMessageID(),
+                            textMessage.getJMSTimestamp(),
+                            textMessage.getJMSCorrelationID(),
+                            textMessage.getJMSReplyTo(),
+                            textMessage.getJMSDestination(),
+                            textMessage.getJMSDeliveryMode(),
+                            textMessage.getJMSRedelivered(),
+                            textMessage.getJMSType(),
+                            textMessage.getJMSExpiration(),
+                            textMessage.getJMSPriority(),
+                            properties,
+                            textMessage.getText());
 
-                return jmsRecord;
-              }
-            })
-            .build();
+                    return jmsRecord;
+                  }
+                })
+        .build();
   }
 
   public static <T> Read<T> readMessage() {
@@ -160,45 +168,70 @@ public class JmsIO {
   }
 
   /**
-   * A {@link PTransform} to read from a JMS destination. See {@link JmsIO} for more
-   * information on usage and configuration.
+   * A {@link PTransform} to read from a JMS destination. See {@link JmsIO} for more information on
+   * usage and configuration.
    */
   @AutoValue
   public abstract static class Read<T> extends PTransform<PBegin, PCollection<T>> {
 
     /**
-     * NB: According to http://docs.oracle.com/javaee/1.4/api/javax/jms/ConnectionFactory.html
-     * "It is expected that JMS providers will provide the tools an administrator needs to create
-     * and configure administered objects in a JNDI namespace. JMS provider implementations of
-     * administered objects should be both javax.jndi.Referenceable and java.io.Serializable so
-     * that they can be stored in all JNDI naming contexts. In addition, it is recommended that
-     * these implementations follow the JavaBeansTM design patterns."
+     * NB: According to http://docs.oracle.com/javaee/1.4/api/javax/jms/ConnectionFactory.html "It
+     * is expected that JMS providers will provide the tools an administrator needs to create and
+     * configure administered objects in a JNDI namespace. JMS provider implementations of
+     * administered objects should be both javax.jndi.Referenceable and java.io.Serializable so that
+     * they can be stored in all JNDI naming contexts. In addition, it is recommended that these
+     * implementations follow the JavaBeansTM design patterns."
      *
      * <p>So, a {@link ConnectionFactory} implementation is serializable.
      */
-    @Nullable abstract ConnectionFactory getConnectionFactory();
-    @Nullable abstract String getQueue();
-    @Nullable abstract String getTopic();
-    @Nullable abstract String getUsername();
-    @Nullable abstract String getPassword();
+    @Nullable
+    abstract ConnectionFactory getConnectionFactory();
+
+    @Nullable
+    abstract String getQueue();
+
+    @Nullable
+    abstract String getTopic();
+
+    @Nullable
+    abstract String getUsername();
+
+    @Nullable
+    abstract String getPassword();
+
     abstract long getMaxNumRecords();
-    @Nullable abstract Duration getMaxReadTime();
-    @Nullable abstract MessageMapper<T> getMessageMapper();
-    @Nullable abstract Coder<T> getCoder();
+
+    @Nullable
+    abstract Duration getMaxReadTime();
+
+    @Nullable
+    abstract MessageMapper<T> getMessageMapper();
+
+    @Nullable
+    abstract Coder<T> getCoder();
 
     abstract Builder<T> builder();
 
     @AutoValue.Builder
     abstract static class Builder<T> {
       abstract Builder<T> setConnectionFactory(ConnectionFactory connectionFactory);
+
       abstract Builder<T> setQueue(String queue);
+
       abstract Builder<T> setTopic(String topic);
+
       abstract Builder<T> setUsername(String username);
+
       abstract Builder<T> setPassword(String password);
+
       abstract Builder<T> setMaxNumRecords(long maxNumRecords);
+
       abstract Builder<T> setMaxReadTime(Duration maxReadTime);
+
       abstract Builder<T> setMessageMapper(MessageMapper<T> mesageMapper);
+
       abstract Builder<T> setCoder(Coder<T> coder);
+
       abstract Read<T> build();
     }
 
@@ -207,11 +240,10 @@ public class JmsIO {
      *
      * <p>For instance:
      *
-     * <pre>
-     *   {@code
-     *    pipeline.apply(JmsIO.read().withConnectionFactory(myConnectionFactory)
-     *   }
-     * </pre>
+     * <pre>{@code
+     * pipeline.apply(JmsIO.read().withConnectionFactory(myConnectionFactory)
+     *
+     * }</pre>
      *
      * @param connectionFactory The JMS {@link ConnectionFactory}.
      * @return The corresponding {@link JmsIO.Read}.
@@ -222,19 +254,18 @@ public class JmsIO {
     }
 
     /**
-     * Specify the JMS queue destination name where to read messages from. The
-     * {@link JmsIO.Read} acts as a consumer on the queue.
+     * Specify the JMS queue destination name where to read messages from. The {@link JmsIO.Read}
+     * acts as a consumer on the queue.
      *
      * <p>This method is exclusive with {@link JmsIO.Read#withTopic(String)}. The user has to
      * specify a destination: queue or topic.
      *
      * <p>For instance:
      *
-     * <pre>
-     *   {@code
-     *    pipeline.apply(JmsIO.read().withQueue("my-queue")
-     *   }
-     * </pre>
+     * <pre>{@code
+     * pipeline.apply(JmsIO.read().withQueue("my-queue")
+     *
+     * }</pre>
      *
      * @param queue The JMS queue name where to read messages from.
      * @return The corresponding {@link JmsIO.Read}.
@@ -245,19 +276,18 @@ public class JmsIO {
     }
 
     /**
-     * Specify the JMS topic destination name where to receive messages from. The
-     * {@link JmsIO.Read} acts as a subscriber on the topic.
+     * Specify the JMS topic destination name where to receive messages from. The {@link JmsIO.Read}
+     * acts as a subscriber on the topic.
      *
      * <p>This method is exclusive with {@link JmsIO.Read#withQueue(String)}. The user has to
      * specify a destination: queue or topic.
      *
      * <p>For instance:
      *
-     * <pre>
-     *   {@code
-     *    pipeline.apply(JmsIO.read().withTopic("my-topic")
-     *   }
-     * </pre>
+     * <pre>{@code
+     * pipeline.apply(JmsIO.read().withTopic("my-topic")
+     *
+     * }</pre>
      *
      * @param topic The JMS topic name.
      * @return The corresponding {@link JmsIO.Read}.
@@ -267,17 +297,13 @@ public class JmsIO {
       return builder().setTopic(topic).build();
     }
 
-    /**
-     * Define the username to connect to the JMS broker (authenticated).
-     */
+    /** Define the username to connect to the JMS broker (authenticated). */
     public Read<T> withUsername(String username) {
       checkArgument(username != null, "username can not be null");
       return builder().setUsername(username).build();
     }
 
-    /**
-     * Define the password to connect to the JMS broker (authenticated).
-     */
+    /** Define the password to connect to the JMS broker (authenticated). */
     public Read<T> withPassword(String password) {
       checkArgument(password != null, "password can not be null");
       return builder().setPassword(password).build();
@@ -285,16 +311,15 @@ public class JmsIO {
 
     /**
      * Define the max number of records that the source will read. Using a max number of records
-     * different from {@code Long.MAX_VALUE} means the source will be {@code Bounded}, and will
-     * stop once the max number of records read is reached.
+     * different from {@code Long.MAX_VALUE} means the source will be {@code Bounded}, and will stop
+     * once the max number of records read is reached.
      *
      * <p>For instance:
      *
-     * <pre>
-     *   {@code
-     *    pipeline.apply(JmsIO.read().withNumRecords(1000)
-     *   }
-     * </pre>
+     * <pre>{@code
+     * pipeline.apply(JmsIO.read().withNumRecords(1000)
+     *
+     * }</pre>
      *
      * @param maxNumRecords The max number of records to read from the JMS destination.
      * @return The corresponding {@link JmsIO.Read}.
@@ -305,17 +330,15 @@ public class JmsIO {
     }
 
     /**
-     * Define the max read time that the source will read. Using a non null max read time
-     * duration means the source will be {@code Bounded}, and will stop once the max read time is
-     * reached.
+     * Define the max read time that the source will read. Using a non null max read time duration
+     * means the source will be {@code Bounded}, and will stop once the max read time is reached.
      *
      * <p>For instance:
      *
-     * <pre>
-     *   {@code
-     *    pipeline.apply(JmsIO.read().withMaxReadTime(Duration.minutes(10))
-     *   }
-     * </pre>
+     * <pre>{@code
+     * pipeline.apply(JmsIO.read().withMaxReadTime(Duration.minutes(10))
+     *
+     * }</pre>
      *
      * @param maxReadTime The max read time duration.
      * @return The corresponding {@link JmsIO.Read}.
@@ -342,8 +365,7 @@ public class JmsIO {
           getQueue() != null || getTopic() != null,
           "Either withQueue() or withTopic() is required");
       checkArgument(
-          getQueue() == null || getTopic() == null,
-          "withQueue() and withTopic() are exclusive");
+          getQueue() == null || getTopic() == null, "withQueue() and withTopic() are exclusive");
       checkArgument(getMessageMapper() != null, "withMessageMapper() is required");
       checkArgument(getCoder() != null, "withCoder() is required");
 
@@ -353,8 +375,8 @@ public class JmsIO {
       PTransform<PBegin, PCollection<T>> transform = unbounded;
 
       if (getMaxNumRecords() < Long.MAX_VALUE || getMaxReadTime() != null) {
-        transform = unbounded.withMaxReadTime(getMaxReadTime())
-            .withMaxNumRecords(getMaxNumRecords());
+        transform =
+            unbounded.withMaxReadTime(getMaxReadTime()).withMaxNumRecords(getMaxNumRecords());
       }
 
       return input.getPipeline().apply(transform);
@@ -365,40 +387,34 @@ public class JmsIO {
       super.populateDisplayData(builder);
       builder.addIfNotNull(DisplayData.item("queue", getQueue()));
       builder.addIfNotNull(DisplayData.item("topic", getTopic()));
-
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
 
     /**
      * Creates an {@link UnboundedSource UnboundedSource&lt;JmsRecord, ?&gt;} with the configuration
-     * in {@link Read}. Primary use case is unit tests, should not be used in an
-     * application.
+     * in {@link Read}. Primary use case is unit tests, should not be used in an application.
      */
     @VisibleForTesting
     UnboundedSource<T, JmsCheckpointMark> createSource() {
       return new UnboundedJmsSource<T>(this);
     }
-
   }
 
   private JmsIO() {}
 
   /**
-   * An interface used by {@link JmsIO.Read} for converting each jms {@link Message} into
-   * an element of the resulting {@link PCollection}.
+   * An interface used by {@link JmsIO.Read} for converting each jms {@link Message} into an element
+   * of the resulting {@link PCollection}.
    */
   @FunctionalInterface
   public interface MessageMapper<T> extends Serializable {
     T mapMessage(Message message) throws Exception;
   }
 
-  /**
-   * An unbounded JMS source.
-   */
+  /** An unbounded JMS source. */
   @VisibleForTesting
-  protected static class UnboundedJmsSource<T>
-          extends UnboundedSource<T, JmsCheckpointMark> {
+  protected static class UnboundedJmsSource<T> extends UnboundedSource<T, JmsCheckpointMark> {
 
     private final Read<T> spec;
 
@@ -407,8 +423,8 @@ public class JmsIO {
     }
 
     @Override
-    public List<UnboundedJmsSource<T>> split(
-        int desiredNumSplits, PipelineOptions options) throws Exception {
+    public List<UnboundedJmsSource<T>> split(int desiredNumSplits, PipelineOptions options)
+        throws Exception {
       List<UnboundedJmsSource<T>> sources = new ArrayList<>();
       if (spec.getTopic() != null) {
         // in the case of a topic, we create a single source, so an unique subscriber, to avoid
@@ -424,8 +440,8 @@ public class JmsIO {
     }
 
     @Override
-    public UnboundedJmsReader<T> createReader(PipelineOptions options,
-                                           JmsCheckpointMark checkpointMark) {
+    public UnboundedJmsReader<T> createReader(
+        PipelineOptions options, JmsCheckpointMark checkpointMark) {
       return new UnboundedJmsReader<T>(this, checkpointMark);
     }
 
@@ -438,7 +454,6 @@ public class JmsIO {
     public Coder<T> getOutputCoder() {
       return this.spec.getCoder();
     }
-
   }
 
   @VisibleForTesting
@@ -453,9 +468,7 @@ public class JmsIO {
     private T currentMessage;
     private Instant currentTimestamp;
 
-    public UnboundedJmsReader(
-        UnboundedJmsSource<T> source,
-        JmsCheckpointMark checkpointMark) {
+    public UnboundedJmsReader(UnboundedJmsSource<T> source, JmsCheckpointMark checkpointMark) {
       this.source = source;
       if (checkpointMark != null) {
         this.checkpointMark = checkpointMark;
@@ -472,8 +485,7 @@ public class JmsIO {
       try {
         Connection connection;
         if (spec.getUsername() != null) {
-          connection =
-              connectionFactory.createConnection(spec.getUsername(), spec.getPassword());
+          connection = connectionFactory.createConnection(spec.getUsername(), spec.getPassword());
         } else {
           connection = connectionFactory.createConnection();
         }
@@ -491,11 +503,9 @@ public class JmsIO {
 
       try {
         if (spec.getTopic() != null) {
-          this.consumer =
-              this.session.createConsumer(this.session.createTopic(spec.getTopic()));
+          this.consumer = this.session.createConsumer(this.session.createTopic(spec.getTopic()));
         } else {
-          this.consumer =
-              this.session.createConsumer(this.session.createQueue(spec.getQueue()));
+          this.consumer = this.session.createConsumer(this.session.createQueue(spec.getQueue()));
         }
       } catch (Exception e) {
         throw new IOException("Error creating JMS consumer", e);
@@ -531,6 +541,11 @@ public class JmsIO {
         throw new NoSuchElementException();
       }
       return currentMessage;
+    }
+
+    @Override
+    public String getCurrentTenantId() {
+      return TenantAwareValue.NULL_TENANT;
     }
 
     @Override
@@ -576,31 +591,44 @@ public class JmsIO {
         throw new IOException(e);
       }
     }
-
   }
 
   /**
-   * A {@link PTransform} to write to a JMS queue. See {@link JmsIO} for
-   * more information on usage and configuration.
+   * A {@link PTransform} to write to a JMS queue. See {@link JmsIO} for more information on usage
+   * and configuration.
    */
   @AutoValue
   public abstract static class Write extends PTransform<PCollection<String>, PDone> {
 
-    @Nullable abstract ConnectionFactory getConnectionFactory();
-    @Nullable abstract String getQueue();
-    @Nullable abstract String getTopic();
-    @Nullable abstract String getUsername();
-    @Nullable abstract String getPassword();
+    @Nullable
+    abstract ConnectionFactory getConnectionFactory();
+
+    @Nullable
+    abstract String getQueue();
+
+    @Nullable
+    abstract String getTopic();
+
+    @Nullable
+    abstract String getUsername();
+
+    @Nullable
+    abstract String getPassword();
 
     abstract Builder builder();
 
     @AutoValue.Builder
     abstract static class Builder {
       abstract Builder setConnectionFactory(ConnectionFactory connectionFactory);
+
       abstract Builder setQueue(String queue);
+
       abstract Builder setTopic(String topic);
+
       abstract Builder setUsername(String username);
+
       abstract Builder setPassword(String password);
+
       abstract Write build();
     }
 
@@ -609,11 +637,10 @@ public class JmsIO {
      *
      * <p>For instance:
      *
-     * <pre>
-     *   {@code
-     *    .apply(JmsIO.write().withConnectionFactory(myConnectionFactory)
-     *   }
-     * </pre>
+     * <pre>{@code
+     * .apply(JmsIO.write().withConnectionFactory(myConnectionFactory)
+     *
+     * }</pre>
      *
      * @param connectionFactory The JMS {@link ConnectionFactory}.
      * @return The corresponding {@link JmsIO.Read}.
@@ -624,19 +651,18 @@ public class JmsIO {
     }
 
     /**
-     * Specify the JMS queue destination name where to send messages to. The
-     * {@link JmsIO.Write} acts as a producer on the queue.
+     * Specify the JMS queue destination name where to send messages to. The {@link JmsIO.Write}
+     * acts as a producer on the queue.
      *
      * <p>This method is exclusive with {@link JmsIO.Write#withTopic(String)}. The user has to
      * specify a destination: queue or topic.
      *
      * <p>For instance:
      *
-     * <pre>
-     *   {@code
-     *    .apply(JmsIO.write().withQueue("my-queue")
-     *   }
-     * </pre>
+     * <pre>{@code
+     * .apply(JmsIO.write().withQueue("my-queue")
+     *
+     * }</pre>
      *
      * @param queue The JMS queue name where to send messages to.
      * @return The corresponding {@link JmsIO.Read}.
@@ -647,19 +673,18 @@ public class JmsIO {
     }
 
     /**
-     * Specify the JMS topic destination name where to send messages to. The
-     * {@link JmsIO.Read} acts as a publisher on the topic.
+     * Specify the JMS topic destination name where to send messages to. The {@link JmsIO.Read} acts
+     * as a publisher on the topic.
      *
      * <p>This method is exclusive with {@link JmsIO.Write#withQueue(String)}. The user has to
      * specify a destination: queue or topic.
      *
      * <p>For instance:
      *
-     * <pre>
-     *   {@code
-     *    .apply(JmsIO.write().withTopic("my-topic")
-     *   }
-     * </pre>
+     * <pre>{@code
+     * .apply(JmsIO.write().withTopic("my-topic")
+     *
+     * }</pre>
      *
      * @param topic The JMS topic name.
      * @return The corresponding {@link JmsIO.Read}.
@@ -669,17 +694,13 @@ public class JmsIO {
       return builder().setTopic(topic).build();
     }
 
-    /**
-     * Define the username to connect to the JMS broker (authenticated).
-     */
+    /** Define the username to connect to the JMS broker (authenticated). */
     public Write withUsername(String username) {
-      checkArgument(username != null,  "username can not be null");
+      checkArgument(username != null, "username can not be null");
       return builder().setUsername(username).build();
     }
 
-    /**
-     * Define the password to connect to the JMS broker (authenticated).
-     */
+    /** Define the password to connect to the JMS broker (authenticated). */
     public Write withPassword(String password) {
       checkArgument(password != null, "password can not be null");
       return builder().setPassword(password).build();
@@ -752,7 +773,5 @@ public class JmsIO {
         connection = null;
       }
     }
-
   }
-
 }

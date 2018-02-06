@@ -33,6 +33,7 @@ import org.apache.beam.sdk.transforms.Partition.PartitionFn;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionList;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -40,9 +41,7 @@ import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for {@link Partition}.
- */
+/** Tests for {@link Partition}. */
 @RunWith(JUnit4.class)
 public class PartitionTest implements Serializable {
 
@@ -63,18 +62,31 @@ public class PartitionTest implements Serializable {
     }
   }
 
-
   @Test
   @Category(ValidatesRunner.class)
   public void testEvenOddPartition() {
 
-    PCollectionList<Integer> outputs = pipeline
-        .apply(Create.of(591, 11789, 1257, 24578, 24799, 307))
-        .apply(Partition.of(2, new ModFn()));
+    PCollectionList<Integer> outputs =
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 591),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11789),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1257),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 24578),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 24799),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 307)))
+            .apply(Partition.of(2, new ModFn()));
     assertTrue(outputs.size() == 2);
-    PAssert.that(outputs.get(0)).containsInAnyOrder(24578);
-    PAssert.that(outputs.get(1)).containsInAnyOrder(591, 11789, 1257,
-        24799, 307);
+    PAssert.that(outputs.get(0))
+        .containsInAnyOrder(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 24578));
+    PAssert.that(outputs.get(1))
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 591),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11789),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1257),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 24799),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 307));
     pipeline.run();
   }
 
@@ -82,13 +94,25 @@ public class PartitionTest implements Serializable {
   @Category(NeedsRunner.class)
   public void testModPartition() {
 
-    PCollectionList<Integer> outputs = pipeline
-        .apply(Create.of(1, 2, 4, 5))
-        .apply(Partition.of(3, new ModFn()));
+    PCollectionList<Integer> outputs =
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5)))
+            .apply(Partition.of(3, new ModFn()));
     assertTrue(outputs.size() == 3);
     PAssert.that(outputs.get(0)).empty();
-    PAssert.that(outputs.get(1)).containsInAnyOrder(1, 4);
-    PAssert.that(outputs.get(2)).containsInAnyOrder(2, 5);
+    PAssert.that(outputs.get(1))
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 1),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4));
+    PAssert.that(outputs.get(2))
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5));
     pipeline.run();
   }
 
@@ -97,19 +121,19 @@ public class PartitionTest implements Serializable {
   public void testOutOfBoundsPartitions() {
 
     pipeline
-    .apply(Create.of(-1))
-    .apply(Partition.of(5, new IdentityFn()));
+        .apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, -1)))
+        .apply(Partition.of(5, new IdentityFn()));
 
     thrown.expect(RuntimeException.class);
-    thrown.expectMessage(
-        "Partition function returned out of bounds index: -1 not in [0..5)");
+    thrown.expectMessage("Partition function returned out of bounds index: -1 not in [0..5)");
     pipeline.run();
   }
 
   @Test
   public void testZeroNumPartitions() {
 
-    PCollection<Integer> input = pipeline.apply(Create.of(591));
+    PCollection<Integer> input =
+        pipeline.apply(Create.of(TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 591)));
 
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("numPartitions must be > 0");
@@ -121,9 +145,22 @@ public class PartitionTest implements Serializable {
   public void testDroppedPartition() {
 
     // Compute the set of integers either 1 or 2 mod 3, the hard way.
-    PCollectionList<Integer> outputs = pipeline
-        .apply(Create.of(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12))
-        .apply(Partition.of(3, new ModFn()));
+    PCollectionList<Integer> outputs =
+        pipeline
+            .apply(
+                Create.of(
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 3),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 6),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 7),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 8),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 9),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 10),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11),
+                    TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 12)))
+            .apply(Partition.of(3, new ModFn()));
 
     List<PCollection<Integer>> outputsList = new ArrayList<>(outputs.getAll());
     outputsList.remove(0);
@@ -131,7 +168,15 @@ public class PartitionTest implements Serializable {
     assertTrue(outputs.size() == 2);
 
     PCollection<Integer> output = outputs.apply(Flatten.pCollections());
-    PAssert.that(output).containsInAnyOrder(2, 4, 5, 7, 8, 10, 11);
+    PAssert.that(output)
+        .containsInAnyOrder(
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 2),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 4),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 5),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 7),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 8),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 10),
+            TenantAwareValue.of(TenantAwareValue.NULL_TENANT, 11));
     pipeline.run();
   }
 

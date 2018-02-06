@@ -33,6 +33,7 @@ import org.apache.beam.sdk.transforms.windowing.FixedWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionList;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.beam.sdk.values.ValueInSingleWindow;
 import org.joda.time.Duration;
@@ -54,7 +55,11 @@ public class GatherAllPanesTest implements Serializable {
   public void singlePaneSingleReifiedPane() {
     PCollection<Iterable<ValueInSingleWindow<Iterable<Long>>>> accumulatedPanes =
         p.apply(GenerateSequence.from(0).to(20000))
-            .apply(WithTimestamps.of(input -> new Instant(input * 10)))
+            .apply(
+                WithTimestamps.of(
+                    input ->
+                        TenantAwareValue.of(
+                            input.getTenantId(), new Instant((Long) input.getValue() * 10))))
             .apply(
                 Window.<Long>into(FixedWindows.of(Duration.standardMinutes(1)))
                     .triggering(AfterWatermark.pastEndOfWindow())
@@ -68,7 +73,7 @@ public class GatherAllPanesTest implements Serializable {
     PAssert.that(accumulatedPanes)
         .satisfies(
             input -> {
-              for (Iterable<ValueInSingleWindow<Iterable<Long>>> windowedInput : input) {
+              for (Iterable<ValueInSingleWindow<Iterable<Long>>> windowedInput : input.getValue()) {
                 if (Iterables.size(windowedInput) > 1) {
                   fail("Expected all windows to have exactly one pane, got " + windowedInput);
                   return null;
@@ -89,7 +94,11 @@ public class GatherAllPanesTest implements Serializable {
         PCollectionList.of(someElems)
             .and(otherElems)
             .apply(Flatten.pCollections())
-            .apply(WithTimestamps.of(input -> new Instant(input * 10)))
+            .apply(
+                WithTimestamps.of(
+                    input ->
+                        TenantAwareValue.of(
+                            input.getTenantId(), new Instant((Long) input.getValue() * 10))))
             .apply(
                 Window.<Long>into(FixedWindows.of(Duration.standardMinutes(1)))
                     .triggering(
@@ -105,7 +114,7 @@ public class GatherAllPanesTest implements Serializable {
     PAssert.that(accumulatedPanes)
         .satisfies(
             input -> {
-              for (Iterable<ValueInSingleWindow<Iterable<Long>>> windowedInput : input) {
+              for (Iterable<ValueInSingleWindow<Iterable<Long>>> windowedInput : input.getValue()) {
                 if (Iterables.size(windowedInput) > 1) {
                   return null;
                 }

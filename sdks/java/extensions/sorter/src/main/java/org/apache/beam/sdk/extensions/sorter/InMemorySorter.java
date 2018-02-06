@@ -60,10 +60,10 @@ class InMemorySorter implements Sorter {
    * and values.
    *
    * <ul>
-   *   <li> Object reference within {@link ArrayList} (1 word),
-   *   <li> A {@link KV} (2 words),
-   *   <li> Two byte arrays (2 words for array lengths),
-   *   <li> Per-object overhead (JVM-specific, guessing 2 words * 3 objects)
+   *   <li>Object reference within {@link ArrayList} (1 word),
+   *   <li>A {@link KV} (2 words),
+   *   <li>Two byte arrays (2 words for array lengths),
+   *   <li>Per-object overhead (JVM-specific, guessing 2 words * 3 objects)
    * </ul>
    */
   private static final long RECORD_MEMORY_OVERHEAD_ESTIMATE = 11 * NUM_BYTES_PER_WORD;
@@ -126,7 +126,9 @@ class InMemorySorter implements Sorter {
    * value and any overhead for objects and references.
    */
   private long estimateRecordBytes(KV<byte[], byte[]> record) {
-    return RECORD_MEMORY_OVERHEAD_ESTIMATE + record.getKey().length + record.getValue().length;
+    return RECORD_MEMORY_OVERHEAD_ESTIMATE
+        + record.getKey().length
+        + record.getValue().getValue().length;
   }
 
   /**

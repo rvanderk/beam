@@ -23,6 +23,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.apache.beam.sdk.transforms.Combine;
+import org.apache.beam.sdk.values.TenantAwareValue;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -40,8 +41,8 @@ public class BucketingFunctionTest {
   private static final Combine.BinaryCombineLongFn SUM =
       new Combine.BinaryCombineLongFn() {
         @Override
-        public long apply(long left, long right) {
-          return left + right;
+        public TenantAwareValue<Long> apply(TenantAwareValue<Long> left, TenantAwareValue<Long> right) {
+          return TenantAwareValue.of(right.getTenantId(), left.getValue() + right.getValue());
         }
 
         @Override

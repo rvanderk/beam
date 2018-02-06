@@ -29,6 +29,7 @@ import org.apache.beam.sdk.io.FileBasedSink.FilenamePolicy;
 import org.apache.beam.sdk.transforms.SerializableFunction;
 import org.apache.beam.sdk.transforms.SerializableFunctions;
 import org.apache.beam.sdk.transforms.display.DisplayData;
+import org.apache.beam.sdk.values.TenantAwareValue;
 
 /** Some helper classes that derive from {@link FileBasedSink.DynamicDestinations}. */
 public class DynamicFileDestinations {
@@ -46,7 +47,7 @@ public class DynamicFileDestinations {
 
     @Override
     public OutputT formatRecord(UserT record) {
-      return formatFunction.apply(record);
+      return formatFunction.apply(TenantAwareValue.of("SYS0", record)).getValue();
     }
 
     @Override
@@ -100,12 +101,12 @@ public class DynamicFileDestinations {
 
     @Override
     public OutputT formatRecord(UserT record) {
-      return formatFunction.apply(record);
+      return formatFunction.apply(TenantAwareValue.of("SYS0", record)).getValue();
     }
 
     @Override
     public Params getDestination(UserT element) {
-      return destinationFunction.apply(element);
+      return destinationFunction.apply(TenantAwareValue.of("SYS0", element)).getValue();
     }
 
     @Override

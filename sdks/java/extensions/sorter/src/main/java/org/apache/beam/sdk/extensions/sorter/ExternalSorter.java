@@ -112,7 +112,7 @@ class ExternalSorter implements Sorter {
     initHadoopSorter();
 
     BytesWritable key = new BytesWritable(record.getKey());
-    BytesWritable value = new BytesWritable(record.getValue());
+    BytesWritable value = new BytesWritable(record.getValue().getValue());
 
     writer.append(key, value);
   }
